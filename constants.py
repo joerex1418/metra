@@ -1,6 +1,6 @@
 METRA_BASE = "https://gtfsapi.metrarail.com/gtfs"
-METRA_API_KEY = "2fbb8926df23765437c88363a228d70a"
-METRA_SECRET_KEY = "aa81976c54adda9c316e9bb34cdcba31"
+METRA_API_KEY = "<YOUR_API_KEY>"
+METRA_SECRET_KEY = "<YOUR_SECRET_KEY>"
 
 SCHEDULES_BASE = "https://metrarail.com/maps-schedules"
 
