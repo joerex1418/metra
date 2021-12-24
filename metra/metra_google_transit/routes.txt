@@ -1,0 +1,12 @@
+route_id,route_long_name,route_type,route_color,route_text_color,route_url
+BNSF,BNSF Railway,2,29C233,0,https://metrarail.com/maps-schedules/train-lines/BNSF
+HC,Heritage Corridor,2,550E0C,FFFFFF,https://metrarail.com/maps-schedules/train-lines/HC
+MD-N,Milwaukee North,2,CC5500,FFFFFF,https://metrarail.com/maps-schedules/train-lines/MD-N
+MD-W,Milwaukee West,2,F1AD0E,0,https://metrarail.com/maps-schedules/train-lines/MD-W
+ME,Metra Electric,2,EB5C00,FFFFFF,https://metrarail.com/maps-schedules/train-lines/ME
+NCS,North Central Service,2,9785BC,FFFFFF,https://metrarail.com/maps-schedules/train-lines/NCS
+RI,Rock Island,2,E02400,FFFFFF,https://metrarail.com/maps-schedules/train-lines/RI
+SWS,Southwest Service,2,0042A8,FFFFFF,https://metrarail.com/maps-schedules/train-lines/SWS
+UP-N,Union Pacific North,2,8000,FFFFFF,https://metrarail.com/maps-schedules/train-lines/UP-N
+UP-NW,Union Pacific Northwest,2,FFE600,0,https://metrarail.com/maps-schedules/train-lines/UP-NW
+UP-W,Union Pacific West,2,FE8D81,0,https://metrarail.com/maps-schedules/train-lines/UP-W

@@ -1,0 +1,11 @@
+fare_id,price,currency_type,payment_method,transfers
+1,4,USD,1,0
+10,9.5,USD,1,0
+2,4.25,USD,1,0
+3,5.5,USD,1,0
+4,6.25,USD,1,0
+5,6.75,USD,1,0
+6,7.25,USD,1,0
+7,7.75,USD,1,0
+8,8.25,USD,1,0
+9,9,USD,1,0
