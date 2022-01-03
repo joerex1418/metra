@@ -18,7 +18,7 @@ A Python wrapper for interacting with the Metra Transit Feeds:
 import metra
 
 # API Wrappers
-live = metra.RealTimeFeed()
-static = metra.StaticFeed()
+r = metra.RealTimeFeed()
+s = metra.StaticFeed()
 
 ```
