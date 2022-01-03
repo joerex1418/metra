@@ -31,6 +31,7 @@ ISO_FMT = r"%Y-%m-%dT%H:%M:%SZ"
 ISO_FMT_ALT = r"%Y-%m-%dT%H:%M:%S"
 ISO_FMT_MS = r"%Y-%m-%dT%H:%M:%S.%fZ"
 SHORT_DATE_FMT = r"%b %-d"
+STANDARD_DATE_FMT = r"%Y-%m-%d"
 FULL_DATE_FMT = r"%m/%d/%Y %I:%M:%S %p"
 
 today = dt.date.today()
@@ -126,7 +127,7 @@ def get_static_stop_times(__dlmode=True):
                 at = dt.datetime.strptime(arrivalTime,MILITARY_FMT_S)
                 arrivalTime = dt.datetime(year=d_obj.year,month=d_obj.month,day=d_obj.day,hour=at.hour,minute=at.minute,second=at.second)
             
-            arrivalTime = arrivalTime.strftime(FULL_DATE_FMT)
+            arrivalTime = arrivalTime.strftime(ISO_FMT)
 
             # hours = int(tDelt[:2])
             # minutes = int(tDelt[3:5])
@@ -179,7 +180,7 @@ def get_static_stop_times(__dlmode=True):
         for trip in set(df.trip_id):
             sep_df = df[df["trip_id"]==trip]
             og_time = sep_df.iloc[0].arrival_time
-            og_time_obj = dt.datetime.strptime(og_time,FULL_DATE_FMT)
+            og_time_obj = dt.datetime.strptime(og_time,ISO_FMT)
             time_diffs = []
             time_diffs_overall = []
             for idx in range(len(sep_df)):
@@ -191,8 +192,10 @@ def get_static_stop_times(__dlmode=True):
                     currRow = sep_df.iloc[idx]
                     prevTime = prevRow.arrival_time
                     upcoTime = currRow.arrival_time
-                    prevTime_obj = dt.datetime.strptime(prevTime,FULL_DATE_FMT)
-                    upcoTime_obj = dt.datetime.strptime(upcoTime,FULL_DATE_FMT)
+                    prevTime_obj = dt.datetime.strptime(prevTime,ISO_FMT)
+                    upcoTime_obj = dt.datetime.strptime(upcoTime,ISO_FMT)
+                    # prevTime_obj = dt.datetime.strptime(prevTime,FULL_DATE_FMT)
+                    # upcoTime_obj = dt.datetime.strptime(upcoTime,FULL_DATE_FMT)
                     time_diffs.append(int((upcoTime_obj - prevTime_obj).seconds/60))
                     time_diffs_overall.append(int((upcoTime_obj - og_time_obj).seconds/60))
             sep_df.insert(2,"time_diff",time_diffs)
@@ -401,3 +404,19 @@ def get_rt_trip_updates():
     url = f"{METRA_BASE}/tripUpdates"
     response = requests.get(url,auth=metra_auth)
     return response.json()
+
+def station_search_util(query):
+    df = get_static_stops(False)
+    query = query.replace("park","pk")
+    r_df = df[(df['stop_id'].str.contains(query.upper())) | (df['stop_name'].str.contains(query.title()))]
+
+    return r_df
+
+def determine_zone_util(stop_id:str):
+    df = get_static_stops(False)
+    try:
+        df = df[df["stop_id"]==stop_id].iloc[0]
+    except:
+        print(f"ERROR: Could not find a stop for 'stop_id', {stop_id}")
+        return None
+    return df["zone_id"]

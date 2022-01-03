@@ -1,9 +1,22 @@
 METRA_BASE = "https://gtfsapi.metrarail.com/gtfs"
-METRA_API_KEY = ""
-METRA_SECRET_KEY = ""
+METRA_API_KEY = "2fbb8926df23765437c88363a228d70a"
+METRA_SECRET_KEY = "aa81976c54adda9c316e9bb34cdcba31"
 
 SCHEDULES_BASE = "https://metrarail.com/maps-schedules"
 
+ROUTE_NAMES = {
+    "Burlington Northern":"BNSF",
+    # "Burlington Northern Santa Fe":"bnsf",
+    "Heritage Corridor":"HC",
+    "Milwaukee District North":"MD-N",
+    "Milwaukee District West":"MD-W",
+    "Metra Electric":"ME",
+    "North Central Services":"NCS",
+    "Rock Island":"RI",
+    "SouthWest Service":"SWS",
+    "Union Pacific North":"UP-N",
+    "Union Pacific Northwest":"UP-NW",
+    "Union Pacific West":"UP-W"}
 
 ROUTES_SHORTHAND = {
     "bnsf":"BNSF",
@@ -21,8 +34,7 @@ ROUTES_SHORTHAND = {
     "upnw":"UP-NW",
     "up-nw":"UP-NW",
     "upw":"UP-W",
-    "up-w":"UP-W"
-}
+    "up-w":"UP-W"}
 
 POSITION_COLS = [
                 'trip_id',
