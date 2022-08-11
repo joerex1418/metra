@@ -1,9 +1,24 @@
 import datetime as dt
 
+import pandas as pd
+from tabulate import tabulate as tab
+
+# from .constants import METRA_BASE
+# from .auth import METRA_API_KEY
+# from .auth import METRA_SECRET_KEY
+
+from .utils import get_publish_time
+from .utils import get_last_local_publish
+
 # Trips Response objects
 class Trips:
     def __init__(self,resp:list[dict]):
         self.trips = [Trip(d) for d in resp]
+        self.__column_format = "{:<20}{:<22}{:<10}{:<6}{:<6}"
+        header = self.__column_format.format('id','headsign','direction','route','service')
+        divider = '-' * len(header)
+        rows = [self.__column_format.format(t.trip_id,t.trip_headsign,t.direction,t.route_id,t.service_id) for t in self.trips]
+        self.__reprdata = '\n'.join(([header,divider] + rows))
         
     def __getitem__(self,idx):
         return self.trips[idx]
@@ -11,8 +26,8 @@ class Trips:
     def __iter__(self):
         return iter(self.trips)
     
-    def __repr__(self):
-        pass
+    def __repr__(self) -> str:
+        return self.__reprdata
 
 class Trip:
     """Represents a single trip on the static schedule"""
@@ -23,8 +38,9 @@ class Trip:
         self.trip_headsign = data.get('trip_headsign','')
         self.block_id = data.get('block_id','')
         self.shape_id = data.get('shape_id','')
-        self.direction_id = data.get('direction_id',-1)     
-    
+        self.direction_id = data.get('direction_id',-1)
+        self.direction = 'inbound' if self.direction_id == 1 else 'outbound'
+            
     def __repr__(self) -> str:
         return f"<{self.trip_id} ({self.trip_headsign})>"
 
@@ -63,7 +79,13 @@ class Stop:
 
 # Stop Times Response objects
 class StopTimes:
+    """Detailed stop time info for today's scheduled trips"""
     def __init__(self,resp:list[dict]):
+        published_date = get_last_local_publish()
+        self.__base_dt = dt.datetime.combine(published_date.date(),time=dt.time(0,0,0))
+        df = pd.DataFrame(resp).drop(columns=['departure_time'])
+        df['arrival_time'] = df['arrival_time'].apply(lambda time: self.__convert_time_strings(time))
+        self.__df = df
         self.stop_times = [StopTime(d) for d in resp]
         
     def __getitem__(self,idx):
@@ -71,6 +93,13 @@ class StopTimes:
         
     def __iter__(self):
         return iter(self.stop_times)
+    
+    def df(self) -> pd.DataFrame:
+        return self.__df
+    
+    def __convert_time_strings(self,time:str):
+        hh, mm, ss = (int(time[:2]), int(time[3:5]), int(time[-2:]))
+        return self.__base_dt + dt.timedelta(hours=hh,minutes=mm,seconds=ss)
 
 class StopTime:
     def __init__(self,data:dict):
@@ -150,11 +179,17 @@ class Routes:
         self.upnw = self.union_pacific_northwest
         self.upw = self.union_pacific_west
         
+        rows = ["{:<8}{:<20}".format(r.route_id,r.long_name) for r in self.routes]
+        self.__repr = "\n".join(rows)
+        
     def __getitem__(self,idx):
         return self.routes[idx]
         
     def __iter__(self):
         return iter(self.routes)
+    
+    def __repr__(self) -> str:
+        return self.__repr
     
     def __assign_routes(self):
         for r in self.routes:

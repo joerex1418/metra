@@ -1,5 +1,7 @@
 .vscode/
 __pycache__/
 
-keys.txt
+*.txt
 *.ipynb
+*.pickle
+metra/.DS_Store

@@ -6,7 +6,6 @@ SCHEDULES_BASE = "https://metrarail.com/maps-schedules"
 
 ROUTE_NAMES = {
     "Burlington Northern":"BNSF",
-    # "Burlington Northern Santa Fe":"bnsf",
     "Heritage Corridor":"HC",
     "Milwaukee District North":"MD-N",
     "Milwaukee District West":"MD-W",

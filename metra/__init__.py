@@ -1,9 +1,16 @@
-from .static import get_stops
-from .static import get_stop_times
-from .static import get_trips
-from .static import get_shapes
-from .static import get_routes
-from .static import get_calendar
-from .static import get_calendar_dates
+from .static import stops
+from .static import stop_times
+from .static import trips
+from .static import shapes
+from .static import routes
+from .static import calendar
+from .static import calendar_dates
 
-from .utils import needs_update
+from .static import get_active_trips
+from .static import get_active_stop_times
+from .static import get_upcoming_stop_times
+from .static import get_route_stop_times
+from .static import update_stop_times
+
+from .utils import get_publish_time
+from .utils import get_last_local_publish
