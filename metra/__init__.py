@@ -12,5 +12,8 @@ from .static import get_upcoming_stop_times
 from .static import get_route_stop_times
 from .static import update_stop_times
 
+from .utils import StaticAPI
 from .utils import get_publish_time
 from .utils import get_last_local_publish
+from .utils import update_schedule_zip
+from .utils import get_schedule_zip

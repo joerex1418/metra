@@ -1,7 +1,9 @@
+import zipfile
 import pickle
 import requests
 import datetime as dt
 from requests.auth import HTTPBasicAuth
+from io import BytesIO
 
 import pandas as pd
 
