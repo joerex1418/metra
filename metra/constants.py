@@ -35,40 +35,6 @@ ROUTES_SHORTHAND = {
     "upw":"UP-W",
     "up-w":"UP-W"}
 
-POSITION_COLS = [
-                'trip_id',
-                'route_id',
-                # 'vehicle_id',
-                'vehicle_label',
-                'lat',
-                'lon',
-                'dir_id',
-                'stop_seq',
-                'status',
-                'stop_id',
-                'start_time',
-                'start_date',
-                'low']
-
-TRIP_UPDATE_COLS = [
-                "trip_start",
-                # "ts_update",
-                # "ts_vehicle",
-                "trip_id",
-                "route_id",
-                "dir_id",
-                # "vehicle_id",
-                "vehicle_label",
-                "lat",
-                "lon",
-                "status",
-                "stop_sequence",
-                "stop_id",
-                "arrDly",
-                "arr",
-                # "depDly",
-                "eta"]
-
 ZONES = {
     "Geneva": "H",
     "West Chicago": "F",

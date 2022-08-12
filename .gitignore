@@ -6,3 +6,4 @@ __pycache__/
 *.pickle
 *.zip
 metra/.DS_Store
+.DS_Store

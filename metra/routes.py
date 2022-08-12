@@ -1,0 +1,12 @@
+class Route:
+    bnsf = "BNSF"
+    heritage_corridor = "HC"
+    milwaukee_district_north = "MD-N"
+    milwaukee_district_west = "MD-W"
+    metra_electric = "ME"
+    north_central = "NCS"
+    rock_island = "RI"
+    southwest_service = "SWS"
+    union_pacific_north = "UP-N"
+    union_pacific_northwest= "UP-NW"
+    union_pacific_west = "UP-W"
