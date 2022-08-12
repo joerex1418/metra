@@ -5,5 +5,5 @@ __pycache__/
 *.ipynb
 *.pickle
 *.zip
-metra/.DS_Store
+
 .DS_Store

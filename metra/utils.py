@@ -30,6 +30,8 @@ class StaticAPI:
         self.__routes = self.__get_routes()
         self.__shapes = self.__get_shapes()
         self.__calendar = self.__get_calendar()
+        self.__fare_rules = self.__get_fare_rules()
+        self.__fare_attributes = self.__get_fare_attributes()
     
     def stops(self) -> pd.DataFrame:
         return self.__stops
@@ -48,6 +50,23 @@ class StaticAPI:
     
     def calendar(self) -> pd.DataFrame:
         return self.__calendar
+    
+    def fare_rules(self) -> pd.DataFrame:
+        return self.__fare_rules
+    
+    def fare_attributes(self) -> pd.DataFrame:
+        return self.__fare_attributes
+    
+    def trip_fare(self,origin:str,destination:str):
+        stops_df = self.stops()
+        stops_df.set_index('stop_id',inplace=True)
+        origin_zone = stops_df.loc[origin]["zone_id"]
+        destination_zone = stops_df.loc[destination]["zone_id"]
+        
+        rules = self.fare_rules()
+        rules = rules[(rules["origin_id"]==origin_zone) & (rules["destination_id"]==destination_zone)]
+        fare_id = rules.iloc[0]["fare_id"]
+        return self.fare_attributes().set_index("fare_id").loc[fare_id]["price"]
     
     def trips_with_stop(self,stop_id:str) -> list[str]:
         df = self.upcoming_schedule()
@@ -74,11 +93,6 @@ class StaticAPI:
         df = pd.concat(dfs_that_matter)[ordered_cols]
         
         return df[df["stop_id"]==origin].sort_values(by="arrival_time")
-    
-    def next_inbound(self,origin:str) -> pd.DataFrame:
-        df = self.upcoming_schedule(direction="ib")
-        df = df[df['trip_id'].isin(self.trips_with_stop(origin.upper()))]
-        return df[df["stop_id"]==origin].reset_index(drop=True)
         
     def upcoming_schedule(self,direction:str=None) -> pd.DataFrame:
         now = pd.to_datetime(dt.datetime.today())
@@ -209,6 +223,23 @@ class StaticAPI:
         df['service_id'] = df['service_id'].apply(lambda x: str(x).strip())
         df['start_date'] = pd.to_datetime(df['start_date'],format=CALENDAR_FMT)
         df['end_date'] = pd.to_datetime(df['end_date'],format=CALENDAR_FMT)
+        return df
+    
+    def __get_fare_rules(self) -> pd.DataFrame:
+        bytes_io = io.BytesIO(self.__zip.read('fare_rules.txt'))
+        df = pd.read_csv(bytes_io)
+        df.columns = list(map(lambda x: str(x).strip(),df.columns))
+        df.drop(columns=['route_id','contains_id'],inplace=True)
+        for col in ['origin_id','destination_id']:
+            df[col] = df[col].apply(lambda x: str(x).strip())
+        return df
+    
+    def __get_fare_attributes(self) -> pd.DataFrame:
+        bytes_io = io.BytesIO(self.__zip.read('fare_attributes.txt'))
+        df = pd.read_csv(bytes_io)
+        df.columns = list(map(lambda x: str(x).strip(),df.columns))
+        for col in ['currency_type']:
+            df[col] = df[col].apply(lambda x: str(x).strip())
         return df
 
 def get_publish_time() -> dt.datetime:
