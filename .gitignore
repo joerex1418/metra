@@ -1,1 +1,7 @@
 keys.txt
+*.pyc
+.vscode/.env
+.vscode/settings.json
+metra/.DS_Store
+metra/data/.DS_Store
+*.ipynb

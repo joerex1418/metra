@@ -1,0 +1,8 @@
+LICENSE
+README.md
+setup.py
+PyTransit_Metra.egg-info/PKG-INFO
+PyTransit_Metra.egg-info/SOURCES.txt
+PyTransit_Metra.egg-info/dependency_links.txt
+PyTransit_Metra.egg-info/requires.txt
+PyTransit_Metra.egg-info/top_level.txt
