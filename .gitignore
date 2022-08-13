@@ -1,1 +1,9 @@
-keys.txt
+.vscode/
+__pycache__/
+
+*.txt
+*.ipynb
+*.pickle
+*.zip
+
+.DS_Store
