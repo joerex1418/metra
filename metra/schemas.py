@@ -1,11 +1,6 @@
 import datetime as dt
 
 import pandas as pd
-from tabulate import tabulate as tab
-
-# from .constants import METRA_BASE
-# from .auth import METRA_API_KEY
-# from .auth import METRA_SECRET_KEY
 
 from .utils import get_publish_time
 from .utils import get_last_local_publish

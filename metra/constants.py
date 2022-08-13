@@ -2,6 +2,9 @@ METRA_BASE = "https://gtfsapi.metrarail.com/gtfs"
 METRA_API_KEY = ""
 METRA_SECRET_KEY = ""
 
+DASH_FMT  = r'%Y-%m-%d'
+SLASH_FMT = r'%m/%d/%Y'
+
 SCHEDULES_BASE = "https://metrarail.com/maps-schedules"
 
 ROUTE_NAMES = {

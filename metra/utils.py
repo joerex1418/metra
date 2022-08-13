@@ -2,11 +2,7 @@ import io
 import zipfile
 import requests
 import datetime as dt
-import base64
 from requests.auth import HTTPBasicAuth
-from typing import Union
-
-import pandas as pd
 
 from .paths import DATA_PATH
 from .constants import METRA_BASE

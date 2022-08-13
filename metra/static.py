@@ -14,6 +14,8 @@ from .schemas import Shapes, Shape
 from .schemas import Routes, Route
 from .schemas import Calendars, Calendar
 from .constants import METRA_BASE
+from .constants import DASH_FMT
+from .constants import SLASH_FMT
 from .auth import METRA_API_KEY
 from .auth import METRA_SECRET_KEY
 from .paths import DATA_PATH
@@ -107,7 +109,17 @@ class StaticAPI:
         df = df[df['stop_id']==stop_id]
         return list(set(df['trip_id']))
     
-    def next_trains(self,origin:str,destination:str) -> pd.DataFrame:
+    def stop_search(self,query:str) -> pd.DataFrame:
+        """Search for stop from the \"stops\" dataset"""
+        query = query.lower()
+        rows = []
+        for idx,row in self.__stops.iterrows():
+            if query in row['stop_id'].lower() or query in row['stop_name'].lower():
+                rows.append(row)
+        return pd.DataFrame(rows)
+                
+    
+    def next_trains(self,origin:str,destination:str,date:Union[str,dt.datetime]=None) -> pd.DataFrame:
         """Get dataframe of upcoming departure times for trains traveling from
         one point, "origin", to another, "destination"
         
@@ -118,7 +130,22 @@ class StaticAPI:
         destination : str
             stop id for the end of a trip
         """
-        st = self.upcoming_schedule()
+        if type(date) is str:
+            try:
+                date = dt.datetime.strptime(date,DASH_FMT)
+            except:
+                try:
+                    date = dt.datetime.strptime(date,SLASH_FMT)
+                except:
+                    date = dt.datetime.today()
+        elif type(date) is dt.datetime:
+            pass
+        elif type(date) is dt.date:
+            date = dt.datetime.combine(date,time=dt.time(3,1,0))
+        else:
+            date = dt.datetime.today()
+            
+        st = self.upcoming_schedule(date=date)
         ordered_cols = list(st.columns)
         relevant_st = st[st["stop_id"]==origin]
         relevant_triplist: str = list(set(relevant_st["trip_id"]))
@@ -136,9 +163,9 @@ class StaticAPI:
         
         df = pd.concat(dfs_that_matter)[ordered_cols]
         
-        return df[df["stop_id"]==origin].sort_values(by="arrival_time")
+        return df[df["stop_id"]==origin].sort_values(by="arrival_time").reset_index(drop=True)
         
-    def upcoming_schedule(self,direction:str=None) -> pd.DataFrame:
+    def upcoming_schedule(self,direction:str=None,date:dt.datetime=None) -> pd.DataFrame:
         """Filters the stop times dataset by only retrieving upcoming 
         arrivals/departure times
         
@@ -148,7 +175,18 @@ class StaticAPI:
             General direction ("inbound" or "outbound") of trips to specify.
             Defaults to `None`
         """
-        now = pd.to_datetime(dt.datetime.today())
+        if type(date) is str:
+            try:
+                date = pd.to_datetime(dt.datetime.strptime(date,DASH_FMT))
+            except:
+                try:
+                    date = pd.to_datetime(dt.datetime.strptime(date,SLASH_FMT))
+                except:
+                    date = pd.to_datetime(dt.datetime.today().date())
+        elif type(date) is dt.datetime:
+            now = pd.to_datetime(date)
+        else:
+            now = pd.to_datetime(dt.datetime.today())
         
         if type(direction) is str:
             if direction.lower() == "inbound" or direction.lower() == "ib":
@@ -161,7 +199,7 @@ class StaticAPI:
         else:
             direction = None
 
-        trips_df = self.active_trips(direction=direction)
+        trips_df = self.active_trips(direction=direction,date=date)
         active_trips = list(set(trips_df['trip_id']))
         
         stop_times_df = self.__stop_times[self.__stop_times['trip_id'].isin(active_trips)]
@@ -201,18 +239,25 @@ class StaticAPI:
         
         return stop_times_df.reset_index(drop=True)
     
-    def active_calendar_services(self) -> list[str]:
+    def active_calendar_services(self,date:dt.datetime=None) -> list[str]:
         """Get list of currently active services"""
-        today = pd.to_datetime(dt.date.today())
+        if date is None:
+            today = pd.to_datetime(dt.date.today())
+        elif type(date) is str:
+            date = dt.datetime.strptime(date,DASH_FMT)
+            today = pd.to_datetime(date)
+        elif type(date) is dt.datetime:
+            today = pd.to_datetime(date)
+            
         df = self.__calendar[self.__calendar['start_date'] <= today]
         df = df[df['end_date'] >= today]
         return list(set(df['service_id']))
     
-    def active_trips(self,route_id:str=None,direction:Union[int,None]=None) -> pd.DataFrame:
+    def active_trips(self,route_id:str=None,direction:Union[int,None]=None,date:dt.datetime=None) -> pd.DataFrame:
         df = self.__trips
         if type(route_id) is str:
             df = df[df['route_id']==route_id]
-        df = df[df['service_id'].isin(self.active_calendar_services())]
+        df = df[df['service_id'].isin(self.active_calendar_services(date=date))]
         
         if type(direction) is int:
             df = df[df['direction_id']==direction]
