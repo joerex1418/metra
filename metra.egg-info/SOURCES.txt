@@ -1,7 +1,0 @@
-README.md
-setup.py
-metra.egg-info/PKG-INFO
-metra.egg-info/SOURCES.txt
-metra.egg-info/dependency_links.txt
-metra.egg-info/requires.txt
-metra.egg-info/top_level.txt
