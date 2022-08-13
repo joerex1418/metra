@@ -1,7 +1,7 @@
 # metra
 [Package Dependencies](#package-dependencies) | [Setup](#setup) | [Getting Started](#getting-started) | [Example Usage](#example-usage)
 
-A Python wrapper for interacting with the Metra Transit Static Feed
+A Python wrapper for interacting with the Metra GTFS API
 
 ## Package Dependencies
 This repository relies heavily on [Pandas](https://pandas.pydata.org/docs/). Aside from that, it is recommended that you use Python 3.8+ since the following modules from the standard library are utilized as well:
