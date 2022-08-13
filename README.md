@@ -26,8 +26,8 @@ On the first line in your `keys.txt` file, type in your assigned **API Key**. On
 
 <i>`keys.txt` Format</i>
 ```
-<METRA_API_KEY>
-<METRA_SECRET_KEY>
+<YOUR_API_KEY_HERE>
+<YOUR_SECRET_KEY_HERE>
 ```
 Save this file and you should be all set.
 
