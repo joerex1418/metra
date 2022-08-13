@@ -17,7 +17,7 @@ This repository relies heavily on [Pandas](https://pandas.pydata.org/docs/). Asi
 ### 1. Download the repository
 ```bash
 # clone the repo with git
-$ git clone https://github.com/joerex1418/metra.git
+git clone https://github.com/joerex1418/metra.git
 ```
 ### 2. Setup your API Credentials
 The Metra GTFS API Feed utilizes basic authentication for accessing the data. Once you have your API credentials, create a `keys.txt` file in the library's root directory (where the `__init__.py` file is located).
