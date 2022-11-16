@@ -1,4 +1,4 @@
-class Route:
+class route:
     bnsf = "BNSF"
     heritage_corridor = "HC"
     milwaukee_district_north = "MD-N"

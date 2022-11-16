@@ -118,7 +118,6 @@ class StaticAPI:
                 rows.append(row)
         return pd.DataFrame(rows)
                 
-    
     def next_trains(self,origin:str,destination:str,date:Union[str,dt.datetime]=None) -> pd.DataFrame:
         """Get dataframe of upcoming departure times for trains traveling from
         one point, "origin", to another, "destination"
@@ -366,9 +365,13 @@ def calendar():
     url = METRA_BASE + "/schedule/calendar"
     resp = requests.get(url,auth=AUTH)
     return Calendars(resp.json())
-    
+
 def calendar_dates():
     url = METRA_BASE + "/schedule/calendar_dates"
     resp = requests.get(url,auth=AUTH)
     return resp.json()
 
+def stop_times():
+    url = METRA_BASE + "/schedule/stop_times"
+    resp = requests.get(url,auth=AUTH)
+    return resp.json()
