@@ -1,10 +1,12 @@
-from .paths import KEYS_PATH
+from requests.auth import HTTPBasicAuth
+
+from .paths import KEYS
 from .constants import METRA_API_KEY
 from .constants import METRA_SECRET_KEY
 
 if METRA_API_KEY == "" or METRA_SECRET_KEY == "":
     try:
-        with open(KEYS_PATH,'r') as txt:
+        with open(KEYS,'r') as txt:
             lines = txt.readlines()
             METRA_API_KEY = lines[0].strip()
             METRA_SECRET_KEY = lines[1].strip()
@@ -16,3 +18,5 @@ if METRA_API_KEY == "" or METRA_SECRET_KEY == "":
               2) Create a file called "keys.txt" in the package's root directory.
               Insert the API Key on the first line and the secret key on the second
               ''')
+
+AUTH = HTTPBasicAuth(METRA_API_KEY,METRA_SECRET_KEY)

@@ -1,377 +1,435 @@
-import io
-import zipfile
-import requests
+import io, os, re
 import datetime as dt
-from requests.auth import HTTPBasicAuth
-from typing import Union
+import csv, requests, zipfile
+from typing import Dict, List, Union, Optional
 
-import pandas as pd
+from tabulate import tabulate
 
-from .schemas import Stops, Stop
-from .schemas import StopTimes, StopTime
-from .schemas import Trips, Trip
-from .schemas import Shapes, Shape
-from .schemas import Routes, Route
-from .schemas import Calendars, Calendar
+from . import paths, utils
+from .auth import AUTH
 from .constants import METRA_BASE
-from .constants import DASH_FMT
-from .constants import SLASH_FMT
-from .auth import METRA_API_KEY
-from .auth import METRA_SECRET_KEY
-from .paths import DATA_PATH
+from .datamodels import _TimeData
+from .datamodels import Trip, Stop, Route, StopTime, CalendarService
+from .utils import filters, determine_direction, normalize_direction
 
-from .utils import get_last_local_publish
-from .utils import get_schedule_zip
-from .utils import CALENDAR_FMT
-from .utils import PUBLISHED_FMT
+LAST_PUBLISH  = os.path.join(paths.DATA, "last_publish.txt")
+LAST_DOWNLOAD = os.path.join(paths.DATA, "last_download.txt")
 
-AUTH = HTTPBasicAuth(METRA_API_KEY,METRA_SECRET_KEY)
-
-class StaticAPI:
+class StaticFeed:
     def __init__(self):
-        self.__zip = get_schedule_zip()
-        self.__published_date = get_last_local_publish()
-        self.__base_dt = dt.datetime.combine(self.__published_date.date(),time=dt.time(0,0,0))
+        # ---------------------------------------------------------- #
+        # Check if the most recent static feed is available locally
+        # ---------------------------------------------------------- #
+        _needs_update = True
+        cloud_publish = self._get_last_publish_cloud()
+        local_publish = self._get_last_publish_local()
         
-        self.__stops = self.__get_stops()
-        self.__stop_times = self.__get_stop_times()
-        self.__trips = self.__get_trips()
-        self.__routes = self.__get_routes()
-        self.__shapes = self.__get_shapes()
-        self.__calendar = self.__get_calendar()
-        self.__fare_rules = self.__get_fare_rules()
-        self.__fare_attributes = self.__get_fare_attributes()
-    
-    def stops(self) -> pd.DataFrame:
-        """Get dataframe of all serviced Metra stops"""
-        return self.__stops
-    
-    def stop_times(self) -> pd.DataFrame:
-        """Get stop times dataset provided by the Metra GTFS API"""
-        return self.__stop_times
-    
-    def trips(self) -> pd.DataFrame:
-        """Get dataset of each trip.
+        if local_publish.dt == cloud_publish.dt:
+            _needs_update = False
         
-        Note that not every trip in the dataset may be currently active. 
-        See the "calendar" dataset with the `StaticAPI.calendar()` method.
+        if _needs_update:
+            # ------------------------------------------------------ #
+            # Download schedule zip file
+            # ------------------------------------------------------ #
+            url = METRA_BASE + "/raw/schedule.zip"
+            resp = requests.get(url,auth=AUTH)
+            with open(os.path.join(paths.DATA,"schedule.zip"),'wb') as f:
+                f.write(resp.content)
+
+            # ------------------------------------------------------ #
+            # Log the publish time
+            #   This timestamp reflects the time
+            #   the static feed was last published to the server
+            # ------------------------------------------------------ #
+            _log_path = os.path.join(paths.DATA,"last_published.txt")
+            with open(_log_path,'w') as f:
+                f.write(cloud_publish.string)
+    
+    def stops(self,**kws):
+        stops: List[Stop] = []
+        with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
+            with z.open("stops.txt") as f:
+                reader = csv.reader(f.read().decode('utf-8').splitlines())
+                next(reader)
+                for row in reader:
+                    row = [x.strip() for x in row]
+                    stops.append(
+                        Stop(
+                            stop_id=row[0],
+                            stop_name=row[1],
+                            # not including stop_desc (row[2])
+                            # value is always empty
+                            stop_lat=float(row[3]),
+                            stop_lon=float(row[4]),
+                            zone_id=row[5],
+                            stop_url=row[6],
+                            wheelchair_boarding=int(row[7])
+                            )
+                        )
+        if kws.get('cmd'):
+            tbl = tabulate(stops,headers="keys",tablefmt="psql")
+            print(tbl)
+        else:
+            return stops
+    
+    def routes(self):
+        _routes = []
+        with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
+            with z.open("routes.txt") as f:
+                reader = csv.reader(f.read().decode('utf-8').splitlines())
+                next(reader)
+                for row in reader:
+                    row = [x.strip() for x in row]
+                    _routes.append(
+                        Route(
+                            route_id=row[0],
+                            route_short_name=row[1],
+                            route_long_name=row[2],
+                            # not including route_desc (row[3])
+                            # value is always empty
+                            agency_id=row[4],
+                            route_type=int(row[5]),
+                            route_color=row[6],
+                            route_text_color=row[7],
+                            route_url=row[8]
+                            )
+                        )
+        return _routes
+    
+    def trips(self):
+        _trips = []
+        with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
+            with z.open("trips.txt") as f:
+                reader = csv.reader(f.read().decode('utf-8').splitlines())
+                next(reader)
+                for row in reader:
+                    row = [x.strip() for x in row]
+                    _trips.append(
+                        Trip(
+                            route_id = row[0],
+                            service_id = row[1],
+                            trip_id = row[2],
+                            trip_headsign = row[3],
+                            block_id = row[4],
+                            shape_id = row[5],
+                            direction_id = int(row[6])
+                            )
+                        )
+        return _trips
+    
+    def calendar(self):
+        services = []
+        with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
+            with z.open("calendar.txt") as f:
+                reader = csv.reader(f.read().decode('utf-8').splitlines())
+                next(reader)
+                for row in reader:
+                    row = [x.strip() for x in row]
+                    start, end = row[8], row[9]
+                    services.append(
+                        CalendarService(
+                            service_id=row[0],
+                            monday=int(row[1]),
+                            tuesday=int(row[2]),
+                            wednesday=int(row[3]),
+                            thursday=int(row[4]),
+                            friday=int(row[5]),
+                            saturday=int(row[6]),
+                            sunday=int(row[7]),
+                            start_date=start,
+                            end_date=end
+                            )
+                        )
+        return services
+    
+    def stop_times(self) -> List[StopTime]:
+        _stop_times = []
+        publish_dt = self._get_last_publish_local().dt
+        basedate = dt.datetime.combine(publish_dt.date(),dt.time(0,0,0))
+        with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
+            with z.open("stop_times.txt") as f:
+                reader = csv.reader(f.read().decode('utf-8').splitlines())
+                next(reader)
+                for row in reader:
+                    row = [x.strip() for x in row]
+                    h, m, s = re.findall("[0-9][0-9]",row[1])
+                    h, m, s = int(h), int(m), int(s)
+                    tdelta = dt.timedelta(hours=h,minutes=m,seconds=s)
+                    arrival_dt = basedate + tdelta
+                    _stop_times.append(
+                        StopTime(
+                            trip_id=row[0],
+                            arrival_time=arrival_dt,
+                            stop_id=row[3],
+                            stop_sequence=int(row[4]),
+                            pickup_type=int(row[5]),
+                            drop_off_type=int(row[6]),
+                            center_boarding=int(row[7]),
+                            south_boarding=int(row[8]),
+                            bikes_allowed=int(row[9]),
+                            notice=int(row[10])
+                        )
+                    )
+        return _stop_times
+
+    def departures(self,
+                   origin_id:str,
+                   destination_id:str,
+                   datetime:dt.datetime=None,
+                   **kws) -> list:
+
+        if datetime is None:
+            datetime = dt.datetime.today()
+
+        direction = determine_direction(origin_id, destination_id)
+
+        _stop_times = self._active_stop_times(datetime,direction)
+
+        # ---------------------------------------------------------- #
+        # Filter stop times to only those that match the origin stop
+        # ---------------------------------------------------------- #
+        origin_sts = list(filter(lambda x: x['stop_id'] == origin_id, _stop_times))
+        trips = list({_['trip_id'] for _ in origin_sts})
+
+        # ---------------------------------------------------------- #
+        # Of the trips that match the origin stop, filter to only
+        #   those that match the destination stop
+        # ---------------------------------------------------------- #
+        _stop_times = filter(
+            lambda x: x['trip_id'] in trips, _stop_times
+            )
+        _stop_times = list(_stop_times)
         
-        For convenience, the built-in method `StaticAPI.active_calendar_services()`
-        will provide a list of active service ids which can be used to filter
-        currently active trips.
-        """
-        return self.__trips
-    
-    def routes(self) -> pd.DataFrame:
-        """Get dataframe of all Metra routes"""
-        return self.__routes
-    
-    def shapes(self) -> pd.DataFrame:
-        """Get dataset of geographical points for all Metra services/routes"""
-        return self.__shapes
-    
-    def calendar(self) -> pd.DataFrame:
-        """Calendar dataset that details when certain trips and services
-        become active/inactive"""
-        return self.__calendar
-    
-    def fare_rules(self) -> pd.DataFrame:
-        """Dataset that details fare prices. (Use with "fare_attributes"
-        dataset"""
-        return self.__fare_rules
-    
-    def fare_attributes(self) -> pd.DataFrame:
-        """Dataset fare attributes. (Use with "fare_rules" dataset)"""
-        return self.__fare_attributes
-    
-    def trip_fare(self,origin:str,destination:str):
-        """Get transportation fare given the origin and destination stops
+        dest_sts = filter(
+            lambda x: x['stop_id'] == destination_id, _stop_times
+            )
         
-        Params:
-        -------
-        origin : str
-            stop id for the start of a trip
-        destination : str
-            stop id for the end of a trip
-        """
-        stops_df = self.stops()
-        stops_df.set_index('stop_id',inplace=True)
-        origin_zone = stops_df.loc[origin]["zone_id"]
-        destination_zone = stops_df.loc[destination]["zone_id"]
+        # ---------------------------------------------------------- #
+        # These trips are the ones that match the origin and
+        #   destination stops
+        # ---------------------------------------------------------- #
+        trips = list({x['trip_id'] for x in dest_sts})
         
-        rules = self.fare_rules()
-        rules = rules[(rules["origin_id"]==origin_zone) & (rules["destination_id"]==destination_zone)]
-        fare_id = rules.iloc[0]["fare_id"]
-        return self.fare_attributes().set_index("fare_id").loc[fare_id]["price"]
-    
-    def trips_with_stop(self,stop_id:str) -> list[str]:
-        df = self.upcoming_schedule()
-        df = df[df['stop_id']==stop_id]
-        return list(set(df['trip_id']))
-    
-    def stop_search(self,query:str) -> pd.DataFrame:
-        """Search for stop from the \"stops\" dataset"""
-        query = query.lower()
-        rows = []
-        for idx,row in self.__stops.iterrows():
-            if query in row['stop_id'].lower() or query in row['stop_name'].lower():
-                rows.append(row)
-        return pd.DataFrame(rows)
-                
-    def next_trains(self,origin:str,destination:str,date:Union[str,dt.datetime]=None) -> pd.DataFrame:
-        """Get dataframe of upcoming departure times for trains traveling from
-        one point, "origin", to another, "destination"
+        _stop_times = filter(
+            lambda x: x['trip_id'] in trips, _stop_times
+            )
+        _stop_times = list(_stop_times)
+
+        _stop_times = filter(
+            lambda x: x['stop_id'] == origin_id, _stop_times
+            )
+        _stop_times = list(_stop_times)
         
-        Params:
-        -------
-        origin : str
-            stop id for the start of a trip
-        destination : str
-            stop id for the end of a trip
-        """
-        if type(date) is str:
-            try:
-                date = dt.datetime.strptime(date,DASH_FMT)
-            except:
-                try:
-                    date = dt.datetime.strptime(date,SLASH_FMT)
-                except:
-                    date = dt.datetime.today()
+        _stop_times = filter(
+            lambda x: x['arrival_time'] > datetime, _stop_times
+            )
+        _stop_times = list(_stop_times)
+        
+        # ---------------------------------------------------------- #
+        # Sort by arrival time
+        # ---------------------------------------------------------- #
+        _stop_times = sorted(
+            _stop_times, key=lambda x: x['arrival_time']
+            )
+        
+        if kws.get('cmd'):
+            tbl = tabulate(_stop_times, headers='keys', tablefmt='psql')
+            print(tbl)
+        else:
+            return _stop_times
+    
+    def get_stop(self, stop_id:str) -> Stop:
+        stops = self.stops()
+        for stop in stops:
+            if stop['stop_id'] == stop_id:
+                return stop
+        return None
+    
+    def active_services(self,
+                        date:dt.date=None) -> List[CalendarService]:
+        cal = self.calendar()
+        if date is None:
+            date = dt.datetime.today()
+        elif type(date) is dt.date:
+            date = dt.datetime.combine(date,dt.time())
         elif type(date) is dt.datetime:
             pass
-        elif type(date) is dt.date:
-            date = dt.datetime.combine(date,time=dt.time(3,1,0))
         else:
-            date = dt.datetime.today()
-            
-        st = self.upcoming_schedule(date=date)
-        ordered_cols = list(st.columns)
-        relevant_st = st[st["stop_id"]==origin]
-        relevant_triplist: str = list(set(relevant_st["trip_id"]))
-        relevant_st = st[st['trip_id'].isin(relevant_triplist)]
-        relevant_st = relevant_st[relevant_st["stop_id"]==destination]
-        relevant_triplist: str = list(set(relevant_st["trip_id"]))
-        relevant_st = st[st['trip_id'].isin(relevant_triplist)]
+            raise TypeError("'date' should be a datetime.date object")
         
-        dfs_that_matter = []
-        for trip_id in relevant_triplist:
-            df = relevant_st[relevant_st["trip_id"]==trip_id]
-            df.set_index("stop_id",inplace=True)
-            if df.loc[origin]["stop_sequence"] < df.loc[destination]["stop_sequence"]:
-                dfs_that_matter.append(df.reset_index())
+        cal = filter(lambda d: filters.active_services(d, date), cal)
+        cal = list(cal)
+        return cal
+
+    def upcoming_trips(self,
+                   origin_id:str,
+                   destination_id:str,
+                   date:dt.date=None) -> List[str]:
         
-        df = pd.concat(dfs_that_matter)[ordered_cols]
-        
-        return df[df["stop_id"]==origin].sort_values(by="arrival_time").reset_index(drop=True)
-        
-    def upcoming_schedule(self,direction:str=None,date:dt.datetime=None) -> pd.DataFrame:
-        """Filters the stop times dataset by only retrieving upcoming 
-        arrivals/departure times
-        
-        Params:
-        -------
-        direction : Optional[str | int]
-            General direction ("inbound" or "outbound") of trips to specify.
-            Defaults to `None`
-        """
-        if type(date) is str:
-            try:
-                date = pd.to_datetime(dt.datetime.strptime(date,DASH_FMT))
-            except:
-                try:
-                    date = pd.to_datetime(dt.datetime.strptime(date,SLASH_FMT))
-                except:
-                    date = pd.to_datetime(dt.datetime.today().date())
-        elif type(date) is dt.datetime:
-            now = pd.to_datetime(date)
-        else:
-            now = pd.to_datetime(dt.datetime.today())
-        
-        if type(direction) is str:
-            if direction.lower() == "inbound" or direction.lower() == "ib":
-                direction = 1
-            elif direction.lower() == "outbound" or direction.lower() == "ob":
-                direction = 0
-        elif type(direction) is int:
-            if direction != 0 and direction != 1:
-                direction = None
+        origin_stop = self.get_stop(origin_id)
+        dest_stop = self.get_stop(destination_id)
+        if origin_stop['zone_id'] > dest_stop['zone_id']:
+            direction = 1
+        elif origin_stop['zone_id'] < dest_stop['zone_id']:
+            direction = 0
         else:
             direction = None
+        
+        _stop_times = self._active_stop_times(date,direction)
+        # _stop_times = filter(lambda d: filters.origin_destination(d, origin_id, destination_id), _stop_times)
+        _stop_times = filter(lambda t: t['stop_id'] == origin_id, stop_times)
+        _stop_times = filter(lambda t: t["arrival_time"] >= dt.datetime.today(), _stop_times)
+        _stop_times = list(_stop_times)
+        _trip_ids = [st["trip_id"] for st in _stop_times]
+        return list(set(_trip_ids))
 
-        trips_df = self.active_trips(direction=direction,date=date)
-        active_trips = list(set(trips_df['trip_id']))
+    def next_trains(self,
+                    origin_id:str,
+                    date:dt.date=None,
+                    direction=None) -> List[StopTime]:
+        direction = normalize_direction(direction)
         
-        stop_times_df = self.__stop_times[self.__stop_times['trip_id'].isin(active_trips)]
-        stop_times_df = stop_times_df[stop_times_df['arrival_time'] > now]
+        _stop_times = self._active_stop_times(date,direction)
+        _stop_times = filter(lambda t: t["stop_id"] == origin_id, _stop_times)
+        _stop_times = filter(lambda t: t["arrival_time"] >= dt.datetime.today(), _stop_times)
         
-        return stop_times_df.reset_index(drop=True)
-    
-    def upcoming_route_schedule(self,route_id:str,direction:Union[Union[str,int],None]=None) -> pd.DataFrame:
-        """Get a schedule of all scheduled stop times by route
-        
-        Parameters:
-        -----------
-        route_id : str
-            The route identifier (the "Route" class in the module contains variables for all active routes)
-        direction : str | int | None
-            Filter results by direction ("inbound" or "outbound"). Alternatively, you can use the API's
-            integer notation to indicate how to filter. 0 = "outbound", 1 = "inbound"
-        """
-        
-        if type(direction) is str:
-            if direction.lower() == "inbound" or direction.lower() == "ib":
+        return list(_stop_times)
+
+    def _active_trips(self,
+                     date:dt.date=None,
+                     direction=None) -> List[str]:
+        _services = self.active_services(date)
+        service_ids = [s["service_id"] for s in _services]
+        _trips = self.trips()
+        _trips = filter(lambda t: t["service_id"] in service_ids, _trips)
+        if direction is not None:
+            if str(direction) in ['i','ib','inbound','1']:
                 direction = 1
-            elif direction.lower() == "outbound" or direction.lower() == "ob":
+            elif str(direction) in ['o','ob','outbound','0']:
                 direction = 0
-        elif type(direction) is int:
-            if direction != 0 and direction != 1:
-                direction = None
-        else:
-            direction = None
-
-        now = pd.to_datetime(dt.datetime.today())
-        trips_df = self.active_trips(route_id=route_id.upper(),direction=direction)
-        active_trips = list(set(trips_df['trip_id']))
-        
-        stop_times_df = self.__stop_times[self.__stop_times['trip_id'].isin(active_trips)]
-        stop_times_df = stop_times_df[stop_times_df['arrival_time'] > now]
-        
-        return stop_times_df.reset_index(drop=True)
+            _trips = filter(lambda t: t["direction_id"] == direction, _trips)
+        _trips = list(_trips)
+        return _trips
     
-    def active_calendar_services(self,date:dt.datetime=None) -> list[str]:
-        """Get list of currently active services"""
+    def _active_stop_times(self,
+                          date:dt.datetime,
+                          direction=None) -> List[StopTime]:
+        # if date is None:
+        #     date = dt.datetime.today()
+        _trips = self._active_trips(date,direction)
+        _trips = [t["trip_id"] for t in _trips]
+        _active_stop_times = []
+        basedate = dt.datetime.combine(dt.date.today(),dt.time(0,0,0))
+        with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
+            with z.open("stop_times.txt") as f:
+                reader = csv.reader(f.read().decode('utf-8').splitlines())
+                next(reader)
+                for row in reader:
+                    row = [x.strip() for x in row]
+                    if row[0] in _trips:
+                        h, m, s = re.findall("[0-9][0-9]",row[1])
+                        h, m, s = int(h), int(m), int(s)
+                        tdelta = dt.timedelta(hours=h,minutes=m,seconds=s)
+                        arrival_dt = basedate + tdelta
+                        arrival_time_str=(
+                            f'{arrival_dt:%m/%d/%Y %I:%M:%S}')
+                        _active_stop_times.append(
+                            StopTime(
+                                trip_id=row[0],
+                                arrival_time=arrival_dt,
+                                arrival_time_str=arrival_time_str,
+                                stop_id=row[3],
+                                stop_sequence=int(row[4]),
+                                pickup_type=int(row[5]),
+                                drop_off_type=int(row[6]),
+                                center_boarding=int(row[7]),
+                                south_boarding=int(row[8]),
+                                bikes_allowed=int(row[9]),
+                                notice=int(row[10])
+                            )
+                        )
+        
+        return _active_stop_times
+    
+    def _get_last_publish_local(self) -> _TimeData:
+        _path = os.path.join(paths.DATA, "last_published.txt")
+        with open(_path,'r') as f:
+            dtstring = f.read()
+            _pdt = _TimeData(_parse_publish_time(dtstring),dtstring)
+            return _pdt
+    
+    def _get_last_publish_cloud(self) -> _TimeData:
+        dtstring = last_publish(return_dt=False)
+        _pdt = _TimeData(_parse_publish_time(dtstring),dtstring)
+        return _pdt
+
+    def _parse_date(self, date):
         if date is None:
-            today = pd.to_datetime(dt.date.today())
-        elif type(date) is str:
-            date = dt.datetime.strptime(date,DASH_FMT)
-            today = pd.to_datetime(date)
+            date = dt.datetime.today()
+        elif type(date) is dt.date:
+            date = dt.datetime.combine(date,dt.time())
         elif type(date) is dt.datetime:
-            today = pd.to_datetime(date)
-            
-        df = self.__calendar[self.__calendar['start_date'] <= today]
-        df = df[df['end_date'] >= today]
-        return list(set(df['service_id']))
-    
-    def active_trips(self,route_id:str=None,direction:Union[int,None]=None,date:dt.datetime=None) -> pd.DataFrame:
-        df = self.__trips
-        if type(route_id) is str:
-            df = df[df['route_id']==route_id]
-        df = df[df['service_id'].isin(self.active_calendar_services(date=date))]
-        
-        if type(direction) is int:
-            df = df[df['direction_id']==direction]
-        
-        return df
-    
-    def __convert_time_strings(self,time:str):
-        time = time.strip()
-        hh, mm, ss = (int(time[:2]), int(time[3:5]), int(time[-2:]))
-        return self.__base_dt + dt.timedelta(hours=hh,minutes=mm,seconds=ss)
-    
-    def __get_stops(self) -> pd.DataFrame:
-        bytes_io = io.BytesIO(self.__zip.read('stops.txt'))
-        df = pd.read_csv(bytes_io)
-        df.columns = list(map(lambda x: str(x).strip(),df.columns))
-        df.drop(columns=['stop_url','stop_desc'],inplace=True)
-        for col in ['stop_id','stop_name','zone_id']:
-            df[col] = df[col].apply(lambda x: str(x).strip())
-        return df
-    
-    def __get_stop_times(self) -> pd.DataFrame:
-        bytes_io = io.BytesIO(self.__zip.read('stop_times.txt'))
-        df = pd.read_csv(bytes_io)
-        df.columns = list(map(lambda x: str(x).strip(),df.columns))
-        df.drop(columns=['departure_time','notice'],inplace=True)
-        df['arrival_time'] = df['arrival_time'].apply(lambda time: self.__convert_time_strings(time))
-        df['trip_id'] = df['trip_id'].apply(lambda x : str(x).strip())
-        df['stop_id'] = df['stop_id'].apply(lambda x : str(x).strip())
-        return df
-    
-    def __get_trips(self) -> pd.DataFrame:
-        bytes_io = io.BytesIO(self.__zip.read('trips.txt'))
-        df = pd.read_csv(bytes_io)
-        df.columns = list(map(lambda x: str(x).strip(),df.columns))
-        df.drop(columns=['block_id'],inplace=True)
-        for col in ['route_id','service_id','trip_id','trip_headsign','shape_id']:
-            df[col] = df[col].apply(lambda x: str(x).strip())
-        return df
-    
-    def __get_routes(self) -> pd.DataFrame:
-        bytes_io = io.BytesIO(self.__zip.read('routes.txt'))
-        df = pd.read_csv(bytes_io)
-        df.columns = list(map(lambda x: str(x).strip(),df.columns))
-        df.rename(columns={'shape_pt_lat':'lat','shape_pt_lon':'lon'})
-        df.drop(columns=['route_desc','route_url','agency_id'],inplace=True)
-        for col in ['route_id','route_short_name','route_long_name','route_color','route_text_color']:
-            df[col] = df[col].apply(lambda x: str(x).strip())
-        return df
-    
-    def __get_shapes(self) -> pd.DataFrame:
-        bytes_io = io.BytesIO(self.__zip.read('shapes.txt'))
-        df = pd.read_csv(bytes_io)
-        df.columns = list(map(lambda x: str(x).strip(),df.columns))
-        for col in ['shape_id']:
-            df[col] = df[col].apply(lambda x: str(x).strip())
-        return df
-
-    def __get_calendar(self) -> pd.DataFrame:
-        bytes_io = io.BytesIO(self.__zip.read('calendar.txt'))
-        df = pd.read_csv(bytes_io)
-        df.columns = list(map(lambda x: str(x).strip(),df.columns))
-        df['service_id'] = df['service_id'].apply(lambda x: str(x).strip())
-        df['start_date'] = pd.to_datetime(df['start_date'],format=CALENDAR_FMT)
-        df['end_date'] = pd.to_datetime(df['end_date'],format=CALENDAR_FMT)
-        return df
-    
-    def __get_fare_rules(self) -> pd.DataFrame:
-        bytes_io = io.BytesIO(self.__zip.read('fare_rules.txt'))
-        df = pd.read_csv(bytes_io)
-        df.columns = list(map(lambda x: str(x).strip(),df.columns))
-        df.drop(columns=['route_id','contains_id'],inplace=True)
-        for col in ['origin_id','destination_id']:
-            df[col] = df[col].apply(lambda x: str(x).strip())
-        return df
-    
-    def __get_fare_attributes(self) -> pd.DataFrame:
-        bytes_io = io.BytesIO(self.__zip.read('fare_attributes.txt'))
-        df = pd.read_csv(bytes_io)
-        df.columns = list(map(lambda x: str(x).strip(),df.columns))
-        for col in ['currency_type']:
-            df[col] = df[col].apply(lambda x: str(x).strip())
-        return df
+            pass
+        else:
+            raise TypeError("'date' should be a datetime.date object")
+        return date
 
 
-def stops() -> Stops:
+def stops() -> Dict:
     url = METRA_BASE + "/schedule/stops"
     resp = requests.get(url,auth=AUTH)
-    return Stops(resp.json())
+    return resp.json()
 
-def trips() -> Trips:
+def trips() -> Dict:
     url = METRA_BASE + "/schedule/trips"
     resp = requests.get(url,auth=AUTH)
-    return Trips(resp.json())
-    
-def shapes() -> Shapes:
+    return resp.json()
+ 
+def shapes() -> Dict:
     url = METRA_BASE + "/schedule/shapes"
     resp = requests.get(url,auth=AUTH)
-    return Shapes(resp.json())
-    
-def routes() -> Routes:
+    return resp.json()
+
+def routes() -> Dict:
     url = METRA_BASE + "/schedule/routes"
     resp = requests.get(url,auth=AUTH)
-    return Routes(resp.json())
+    return resp.json()
 
-def calendar():
+def calendar() -> Dict:
     url = METRA_BASE + "/schedule/calendar"
     resp = requests.get(url,auth=AUTH)
-    return Calendars(resp.json())
+    return resp.json()
 
-def calendar_dates():
+def calendar_dates() -> Dict:
     url = METRA_BASE + "/schedule/calendar_dates"
     resp = requests.get(url,auth=AUTH)
     return resp.json()
 
-def stop_times():
+def stop_times(trip_id: str = None) -> Dict:
+    "Not recommended - Takes a long time to retrieve this info"
     url = METRA_BASE + "/schedule/stop_times"
+    if trip_id:
+        url += f"/{trip_id}"
     resp = requests.get(url,auth=AUTH)
     return resp.json()
+
+def _parse_publish_time(text: str) -> dt.datetime:
+    re_date = re.search("[AP]M",text)
+    text = text[:re_date.end()]
+    return dt.datetime.strptime(text, utils.PUBLISHED_FMT)
+
+def last_publish(return_dt:bool=False) -> Union[str,dt.datetime]:
+    """
+    Returns a timestamp of when Metra last published their schedule
+    
+    Parameters:
+    return_dt: bool
+        If True, returns a datetime object instead of a string
+    """
+    url = METRA_BASE + "/raw/published.txt"
+    resp = requests.get(url,auth=AUTH)
+    datestring = resp.text
+    
+    if return_dt:
+        return _parse_publish_time(datestring)
+    return datestring
