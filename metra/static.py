@@ -15,7 +15,7 @@ from .utils import filters, determine_direction, normalize_direction
 LAST_PUBLISH  = os.path.join(paths.DATA, "last_publish.txt")
 LAST_DOWNLOAD = os.path.join(paths.DATA, "last_download.txt")
 
-class StaticFeed:
+class StaticAPI:
     def __init__(self):
         # ---------------------------------------------------------- #
         # Check if the most recent static feed is available locally
@@ -45,7 +45,7 @@ class StaticFeed:
             with open(_log_path,'w') as f:
                 f.write(cloud_publish.string)
     
-    def stops(self,**kws):
+    def stops(self,**kws) -> List[Stop]:
         stops: List[Stop] = []
         with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
             with z.open("stops.txt") as f:
@@ -72,7 +72,7 @@ class StaticFeed:
         else:
             return stops
     
-    def routes(self):
+    def routes(self) -> List[Route]:
         _routes = []
         with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
             with z.open("routes.txt") as f:
@@ -96,7 +96,7 @@ class StaticFeed:
                         )
         return _routes
     
-    def trips(self):
+    def trips(self) -> List[Trip]:
         _trips = []
         with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
             with z.open("trips.txt") as f:
@@ -117,7 +117,7 @@ class StaticFeed:
                         )
         return _trips
     
-    def calendar(self):
+    def calendar(self) -> List[CalendarService]:
         services = []
         with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
             with z.open("calendar.txt") as f:
@@ -172,17 +172,16 @@ class StaticFeed:
                     )
         return _stop_times
 
-    def departures(self,
+    def next_trains(self,
                    origin_id:str,
                    destination_id:str,
                    datetime:dt.datetime=None,
-                   **kws) -> list:
+                   **kws) -> List[StopTime]:
 
         if datetime is None:
             datetime = dt.datetime.today()
-
+        
         direction = determine_direction(origin_id, destination_id)
-
         _stop_times = self._active_stop_times(datetime,direction)
 
         # ---------------------------------------------------------- #
@@ -238,6 +237,15 @@ class StaticFeed:
         else:
             return _stop_times
     
+    def trip_stops(self,
+                   trip_id: str,
+                   **kws) -> List[StopTime]:
+
+        _stop_times = self.stop_times()
+        _stop_times = list(filter(lambda x: x["trip_id"] == trip_id, _stop_times))
+        # print(tabulate(_stop_times, headers='keys', tablefmt='psql'))
+        return _stop_times
+    
     def get_stop(self, stop_id:str) -> Stop:
         stops = self.stops()
         for stop in stops:
@@ -282,18 +290,6 @@ class StaticFeed:
         _stop_times = list(_stop_times)
         _trip_ids = [st["trip_id"] for st in _stop_times]
         return list(set(_trip_ids))
-
-    def next_trains(self,
-                    origin_id:str,
-                    date:dt.date=None,
-                    direction=None) -> List[StopTime]:
-        direction = normalize_direction(direction)
-        
-        _stop_times = self._active_stop_times(date,direction)
-        _stop_times = filter(lambda t: t["stop_id"] == origin_id, _stop_times)
-        _stop_times = filter(lambda t: t["arrival_time"] >= dt.datetime.today(), _stop_times)
-        
-        return list(_stop_times)
 
     def _active_trips(self,
                      date:dt.date=None,

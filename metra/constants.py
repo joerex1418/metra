@@ -38,6 +38,10 @@ ROUTES_SHORTHAND = {
     "upw":"UP-W",
     "up-w":"UP-W"}
 
+# ROUTE_STOPS = {
+#     "BNSF": {}
+#     }
+
 ZONES = {
     "GENEVA": "H",
     "WCHICAGO": "F",
