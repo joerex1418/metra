@@ -1,5 +1,5 @@
 .vscode/
-__pycache__/
+__pycache__
 
 *.txt
 *.ipynb
@@ -7,10 +7,10 @@ __pycache__/
 *.zip
 *.egg-info
 
+script.py
 .DS_Store
 script.py
 *.ipynb
 
-
 .env/
-.devenv/
+.vscode
