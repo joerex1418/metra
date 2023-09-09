@@ -261,9 +261,6 @@ class StaticAPI:
         return cal
 
     def upcoming_trips(self, origin_id:str, destination_id:str, date:dt.date=None) -> typing.List[str]:
-        origin_stop = self.get_stop(origin_id)
-        dest_stop = self.get_stop(destination_id)
-        
         direction = determine_direction(origin_id, destination_id)
         
         _stop_times = self._active_stop_times(date, direction)
@@ -272,10 +269,7 @@ class StaticAPI:
             (x["stop_id"] == origin_id) and
             (x["arrival_time"] >= dt.datetime.today())
         )
-        # _stop_times = filter(lambda d: filters.origin_destination(d, origin_id, destination_id), _stop_times)
-        # _stop_times = filter(lambda t: t['stop_id'] == origin_id, stop_times)
-        # _stop_times = filter(lambda t: t["arrival_time"] >= dt.datetime.today(), _stop_times)
-        # _stop_times = list(_stop_times)
+
         _trip_ids = list({x["trip_id"] for x in _stop_times})
         return _trip_ids
 
@@ -388,6 +382,7 @@ class _StaticDataObj:
         data = self.__call__()
         rich.print_json(data=data)
 
+
 class _stops(_StaticDataObj):
     def __init__(self):...
     
@@ -395,14 +390,6 @@ class _stops(_StaticDataObj):
         url = METRA_BASE + "/schedule/stops"
         resp = requests.get(url,auth=AUTH)
         data = resp.json()
-        # if include_route == True:
-        #     for stop in data:
-        #         stop_url = stop["stop_url"]
-        #         stop["routes"] = None
-        #         if isinstance(stop_url, str):
-        #             _match = utils.PTRN_RT_IN_URL.search(stop_url)
-        #             if _match != None:
-        #                 stop["routes"] = _match.group()
         return data
 
 

@@ -49,11 +49,15 @@ class filters:
         if d['stop_id'] == origin_id or d['stop_id'] == destination_id:
             return True
 
+
 def now() -> dt.datetime:
     """Returns the current datetime"""
     return dt.datetime.today()    
 
 def get_publish_time() -> dt.datetime:
+    """
+    Log and retrieve the time that Metra last published their schedule
+    """
     url = METRA_BASE + "/raw/published.txt"
     resp = requests.get(url,auth=AUTH)
     time = resp.text
@@ -62,6 +66,9 @@ def get_publish_time() -> dt.datetime:
     return dt.datetime.strptime(time,PUBLISHED_FMT)
     
 def update_schedule_zip():
+    """
+    Refresh the zip file from the Metra GTFS Static Feed
+    """
     url = METRA_BASE + "/raw/schedule.zip"
     resp = requests.get(url,auth=AUTH)
     updated_zip = zipfile.ZipFile(io.BytesIO(resp.content),'r')
@@ -105,16 +112,7 @@ def determine_direction(origin_id:str, destination_id:str) -> int:
                     .format(route_id, origin_id, destination_id)
                     .strip()
                 )
-    
-# def determine_direction(origin_id: str, destination_id: str) -> int:
-#     """Determines the direction of travel based on origin and destination"""
-#     if ZONES[origin_id] > ZONES[destination_id]:
-#         return 1
-#     elif ZONES[origin_id] < ZONES[destination_id]:
-#         return 0
-#     else:
-#         return None
-    
+
 def normalize_direction(direction) -> Optional[int]:
     if str(direction).lower() in ['i','ib','inbound','1']:
         return 1
