@@ -1,3 +1,4 @@
+import re
 import requests
 import io, zipfile
 import datetime as dt
@@ -5,22 +6,27 @@ from requests.auth import HTTPBasicAuth
 from typing import Dict, List, Optional
 
 from .paths import DATA
-from .constants import METRA_BASE, ZONES
-from .auth import METRA_API_KEY, METRA_SECRET_KEY
+from .auth import METRA_API_KEY
+from .auth import METRA_SECRET_KEY
+from .constants import ZONES
+from .constants import METRA_BASE
+from .sequences import sequences
 
 AUTH = HTTPBasicAuth(METRA_API_KEY,METRA_SECRET_KEY)
 PUBLISHED_FMT = r'%m/%d/%y %I:%M:%S %p'
 CALENDAR_FMT  = r'%Y%m%d'
 
+PTRN_RT_IN_URL = re.compile(r"(?<=train\-lines\/)(.*)(?=\/stations)")
+
 class filters:
     @staticmethod
     def active_services(d: Dict, date: dt.date) -> bool:
         try:
-            dstart = dt.datetime.strptime(d['start_date'],r'%Y-%m-%d')
-            dend = dt.datetime.strptime(d['end_date'],r'%Y-%m-%d')
+            dstart = dt.datetime.strptime(d['start_date'], r'%Y-%m-%d')
+            dend = dt.datetime.strptime(d['end_date'], r'%Y-%m-%d')
         except:
-            dstart = dt.datetime.strptime(d['start_date'],CALENDAR_FMT)
-            dend = dt.datetime.strptime(d['end_date'],CALENDAR_FMT)
+            dstart = dt.datetime.strptime(d['start_date'], CALENDAR_FMT)
+            dend = dt.datetime.strptime(d['end_date'], CALENDAR_FMT)
         if dstart <= date <= dend:
             return d[f'{date:%A}'.lower()]
     
@@ -32,9 +38,9 @@ class filters:
     @staticmethod
     def upcoming_arrivals(d: Dict, datetime: dt.datetime) -> bool:
         try:
-            dtime = dt.datetime.strptime(d['arrival_time'],PUBLISHED_FMT)
+            dtime = dt.datetime.strptime(d['arrival_time'], PUBLISHED_FMT)
         except:
-            dtime = dt.datetime.strptime(d['arrival_time'],CALENDAR_FMT)
+            dtime = dt.datetime.strptime(d['arrival_time'], CALENDAR_FMT)
         if datetime <= dtime:
             return True
 
@@ -67,14 +73,47 @@ def update_schedule_zip():
     updated_zip.close()
     new_zip.close()
     
-def determine_direction(origin_id: str, destination_id: str) -> int:
-    """Determines the direction of travel based on origin and destination"""
-    if ZONES[origin_id] > ZONES[destination_id]:
-        return 0
-    elif ZONES[origin_id] < ZONES[destination_id]:
-        return 1
-    else:
-        return None
+def determine_direction(origin_id:str, destination_id:str) -> int:
+    """
+    Determine the integer code for the direction of travel
+    
+    Parameters
+    -----------
+    origin_id: str
+    
+    destination_id: str
+    """
+    
+    for route_id, route_sequence in sequences.items():
+        if origin_id in route_sequence.keys() and destination_id in route_sequence.keys():
+            route_sequence = route_sequence
+            
+            assert(origin_id in route_sequence.keys())
+            assert(destination_id in route_sequence.keys())
+            
+            if route_sequence[origin_id] < route_sequence[destination_id]:
+                return 0
+            elif route_sequence[origin_id] > route_sequence[destination_id]:
+                return 1
+            else:
+                raise RuntimeError(
+                    """
+                    Error retrieving stop sequence values. Sequence values should not be equal.
+                    route_id -> "{}"
+                    origin_id -> "{}" | destination_id -> "{}"
+                    """
+                    .format(route_id, origin_id, destination_id)
+                    .strip()
+                )
+    
+# def determine_direction(origin_id: str, destination_id: str) -> int:
+#     """Determines the direction of travel based on origin and destination"""
+#     if ZONES[origin_id] > ZONES[destination_id]:
+#         return 1
+#     elif ZONES[origin_id] < ZONES[destination_id]:
+#         return 0
+#     else:
+#         return None
     
 def normalize_direction(direction) -> Optional[int]:
     if str(direction).lower() in ['i','ib','inbound','1']:

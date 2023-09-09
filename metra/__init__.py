@@ -3,7 +3,7 @@ import datetime as dt
 import requests, zipfile
 from typing import Union, Dict, List
 
-from . import static
+from . import api
 from .constants import ROUTE_NAMES
 
 """

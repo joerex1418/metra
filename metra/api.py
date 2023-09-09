@@ -1,19 +1,23 @@
+from typing import Any
+import rich
+import typing
 import io, os, re
 import datetime as dt
 import csv, requests, zipfile
-from typing import Dict, List, Union, Optional
 
 from tabulate import tabulate
 
+from . import datamodels
 from . import paths, utils
 from .auth import AUTH
 from .constants import METRA_BASE
 from .datamodels import _TimeData
-from .datamodels import Trip, Stop, Route, StopTime, CalendarService
+from .datamodels import Trip, Stop, Route, StopTime, CalendarItem
 from .utils import filters, determine_direction, normalize_direction
 
 LAST_PUBLISH  = os.path.join(paths.DATA, "last_publish.txt")
 LAST_DOWNLOAD = os.path.join(paths.DATA, "last_download.txt")
+
 
 class StaticAPI:
     def __init__(self):
@@ -29,7 +33,7 @@ class StaticAPI:
         
         if _needs_update:
             # ------------------------------------------------------ #
-            # Download schedule zip file
+            # Download schedule zip file.
             # ------------------------------------------------------ #
             url = METRA_BASE + "/raw/schedule.zip"
             resp = requests.get(url,auth=AUTH)
@@ -37,16 +41,16 @@ class StaticAPI:
                 f.write(resp.content)
 
             # ------------------------------------------------------ #
-            # Log the publish time
-            #   This timestamp reflects the time
-            #   the static feed was last published to the server
+            # Log the publish time.
+            # This timestamp reflects the time the static feed was 
+            # last published to the server
             # ------------------------------------------------------ #
             _log_path = os.path.join(paths.DATA,"last_published.txt")
             with open(_log_path,'w') as f:
                 f.write(cloud_publish.string)
     
-    def stops(self,**kws) -> List[Stop]:
-        stops: List[Stop] = []
+    def stops(self,**kws) -> typing.List[Stop]:
+        stops = []
         with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
             with z.open("stops.txt") as f:
                 reader = csv.reader(f.read().decode('utf-8').splitlines())
@@ -54,11 +58,10 @@ class StaticAPI:
                 for row in reader:
                     row = [x.strip() for x in row]
                     stops.append(
+                        # not including stop_desc (row[2]) -- value is always empty
                         Stop(
                             stop_id=row[0],
                             stop_name=row[1],
-                            # not including stop_desc (row[2])
-                            # value is always empty
                             stop_lat=float(row[3]),
                             stop_lon=float(row[4]),
                             zone_id=row[5],
@@ -69,10 +72,11 @@ class StaticAPI:
         if kws.get('cmd'):
             tbl = tabulate(stops,headers="keys",tablefmt="psql")
             print(tbl)
+            return stops
         else:
             return stops
     
-    def routes(self) -> List[Route]:
+    def routes(self) -> typing.List[Route]:
         _routes = []
         with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
             with z.open("routes.txt") as f:
@@ -96,7 +100,7 @@ class StaticAPI:
                         )
         return _routes
     
-    def trips(self) -> List[Trip]:
+    def trips(self) -> typing.List[Trip]:
         _trips = []
         with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
             with z.open("trips.txt") as f:
@@ -117,7 +121,7 @@ class StaticAPI:
                         )
         return _trips
     
-    def calendar(self) -> List[CalendarService]:
+    def calendar(self) -> typing.List[CalendarItem]:
         services = []
         with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
             with z.open("calendar.txt") as f:
@@ -127,7 +131,7 @@ class StaticAPI:
                     row = [x.strip() for x in row]
                     start, end = row[8], row[9]
                     services.append(
-                        CalendarService(
+                        CalendarItem(
                             service_id=row[0],
                             monday=int(row[1]),
                             tuesday=int(row[2]),
@@ -142,7 +146,7 @@ class StaticAPI:
                         )
         return services
     
-    def stop_times(self) -> List[StopTime]:
+    def stop_times(self, **kws) -> typing.List[StopTime]:
         _stop_times = []
         publish_dt = self._get_last_publish_local().dt
         basedate = dt.datetime.combine(publish_dt.date(),dt.time(0,0,0))
@@ -172,79 +176,67 @@ class StaticAPI:
                     )
         return _stop_times
 
-    def next_trains(self,
-                   origin_id:str,
-                   destination_id:str,
-                   datetime:dt.datetime=None,
-                   **kws) -> List[StopTime]:
-
-        if datetime is None:
-            datetime = dt.datetime.today()
+    def next_trains(self, origin_id:str, destination_id:str, datetime:dt.datetime=None, **kws) -> typing.List[StopTime]:
+        datetime = dt.datetime.today() if datetime == None else datetime
+        assert(isinstance(datetime, (dt.datetime, dt.date)))
         
         direction = determine_direction(origin_id, destination_id)
-        _stop_times = self._active_stop_times(datetime,direction)
+        
+        _stop_times = self._active_stop_times(datetime, direction)
 
         # ---------------------------------------------------------- #
         # Filter stop times to only those that match the origin stop
         # ---------------------------------------------------------- #
-        origin_sts = list(filter(lambda x: x['stop_id'] == origin_id, _stop_times))
-        trips = list({_['trip_id'] for _ in origin_sts})
+        origin_sts = (x for x in _stop_times if x["stop_id"] == origin_id)
+        trips = list({x['trip_id'] for x in origin_sts})
 
         # ---------------------------------------------------------- #
         # Of the trips that match the origin stop, filter to only
-        #   those that match the destination stop
+        # those that match the destination stop
         # ---------------------------------------------------------- #
-        _stop_times = filter(
-            lambda x: x['trip_id'] in trips, _stop_times
-            )
+        
+        _stop_times = (x for x in _stop_times if x["trip_id"] in trips)
         _stop_times = list(_stop_times)
         
-        dest_sts = filter(
-            lambda x: x['stop_id'] == destination_id, _stop_times
-            )
+        dest_sts = (x for x in _stop_times if x["stop_id"] == destination_id)
         
         # ---------------------------------------------------------- #
         # These trips are the ones that match the origin and
         #   destination stops
         # ---------------------------------------------------------- #
         trips = list({x['trip_id'] for x in dest_sts})
-        
-        _stop_times = filter(
-            lambda x: x['trip_id'] in trips, _stop_times
-            )
-        _stop_times = list(_stop_times)
 
-        _stop_times = filter(
-            lambda x: x['stop_id'] == origin_id, _stop_times
+        _stop_times = (
+            x for x in _stop_times 
+            if (x["arrival_time"] > datetime and 
+                x["stop_id"] == origin_id and 
+                x["trip_id"] in trips)
             )
-        _stop_times = list(_stop_times)
         
-        _stop_times = filter(
-            lambda x: x['arrival_time'] > datetime, _stop_times
-            )
         _stop_times = list(_stop_times)
         
         # ---------------------------------------------------------- #
         # Sort by arrival time
         # ---------------------------------------------------------- #
-        _stop_times = sorted(
-            _stop_times, key=lambda x: x['arrival_time']
-            )
+        # _stop_times.sort()
+        _stop_times = sorted(_stop_times, key=lambda x: x['arrival_time'])
         
-        if kws.get('cmd'):
+        if kws.get('cmd') == True:
             tbl = tabulate(_stop_times, headers='keys', tablefmt='psql')
             print(tbl)
+            return _stop_times
         else:
             return _stop_times
     
-    def trip_stops(self,
-                   trip_id: str,
-                   **kws) -> List[StopTime]:
-
-        _stop_times = self.stop_times()
-        _stop_times = list(filter(lambda x: x["trip_id"] == trip_id, _stop_times))
-        # print(tabulate(_stop_times, headers='keys', tablefmt='psql'))
-        return _stop_times
+    def trip_stops(self, trip_id: str, **kws) -> typing.List[StopTime]:
+        _stop_times = [x for x in self.stop_times(**kws) if x["trip_id"] == trip_id]
+        
+        if kws.get("cmd") == True:
+            tbl = tabulate(_stop_times, headers='keys', tablefmt='psql')
+            print(tbl)
+            return _stop_times
+        else:
+            return _stop_times
     
     def get_stop(self, stop_id:str) -> Stop:
         stops = self.stops()
@@ -253,8 +245,7 @@ class StaticAPI:
                 return stop
         return None
     
-    def active_services(self,
-                        date:dt.date=None) -> List[CalendarService]:
+    def active_services(self, date:dt.date=None) -> typing.List[CalendarItem]:
         cal = self.calendar()
         if date is None:
             date = dt.datetime.today()
@@ -269,53 +260,49 @@ class StaticAPI:
         cal = list(cal)
         return cal
 
-    def upcoming_trips(self,
-                   origin_id:str,
-                   destination_id:str,
-                   date:dt.date=None) -> List[str]:
-        
+    def upcoming_trips(self, origin_id:str, destination_id:str, date:dt.date=None) -> typing.List[str]:
         origin_stop = self.get_stop(origin_id)
         dest_stop = self.get_stop(destination_id)
-        if origin_stop['zone_id'] > dest_stop['zone_id']:
-            direction = 1
-        elif origin_stop['zone_id'] < dest_stop['zone_id']:
-            direction = 0
-        else:
-            direction = None
         
-        _stop_times = self._active_stop_times(date,direction)
+        direction = determine_direction(origin_id, destination_id)
+        
+        _stop_times = self._active_stop_times(date, direction)
+        _stop_times = (
+            x for x in _stop_times if 
+            (x["stop_id"] == origin_id) and
+            (x["arrival_time"] >= dt.datetime.today())
+        )
         # _stop_times = filter(lambda d: filters.origin_destination(d, origin_id, destination_id), _stop_times)
-        _stop_times = filter(lambda t: t['stop_id'] == origin_id, stop_times)
-        _stop_times = filter(lambda t: t["arrival_time"] >= dt.datetime.today(), _stop_times)
-        _stop_times = list(_stop_times)
-        _trip_ids = [st["trip_id"] for st in _stop_times]
-        return list(set(_trip_ids))
+        # _stop_times = filter(lambda t: t['stop_id'] == origin_id, stop_times)
+        # _stop_times = filter(lambda t: t["arrival_time"] >= dt.datetime.today(), _stop_times)
+        # _stop_times = list(_stop_times)
+        _trip_ids = list({x["trip_id"] for x in _stop_times})
+        return _trip_ids
 
-    def _active_trips(self,
-                     date:dt.date=None,
-                     direction=None) -> List[str]:
+    def _active_trips(self, date:dt.date=None, direction=None) -> typing.List[str]:
         _services = self.active_services(date)
+        
         service_ids = [s["service_id"] for s in _services]
-        _trips = self.trips()
-        _trips = filter(lambda t: t["service_id"] in service_ids, _trips)
+
+        _trips = (t for t in self.trips() if t["service_id"] in service_ids)
+        
         if direction is not None:
             if str(direction) in ['i','ib','inbound','1']:
                 direction = 1
             elif str(direction) in ['o','ob','outbound','0']:
                 direction = 0
-            _trips = filter(lambda t: t["direction_id"] == direction, _trips)
-        _trips = list(_trips)
+            _trips = (t for t in _trips if t["direction_id"] == direction)
+            
+        # _trips = list(_trips)
         return _trips
     
-    def _active_stop_times(self,
-                          date:dt.datetime,
-                          direction=None) -> List[StopTime]:
-        # if date is None:
-        #     date = dt.datetime.today()
-        _trips = self._active_trips(date,direction)
-        _trips = [t["trip_id"] for t in _trips]
+    def _active_stop_times(self, date:dt.datetime, direction=None) -> typing.List[StopTime]:
+        _tripsdata = self._active_trips(date, direction)
+        
+        _trips = [t["trip_id"] for t in _tripsdata]
         _active_stop_times = []
-        basedate = dt.datetime.combine(dt.date.today(),dt.time(0,0,0))
+        basedate = dt.datetime.combine(date, dt.time(0,0,0))
+        # basedate = dt.datetime.combine(dt.date.today(),dt.time(0,0,0))
         with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
             with z.open("stop_times.txt") as f:
                 reader = csv.reader(f.read().decode('utf-8').splitlines())
@@ -371,50 +358,142 @@ class StaticAPI:
         return date
 
 
-def stops() -> Dict:
-    url = METRA_BASE + "/schedule/stops"
-    resp = requests.get(url,auth=AUTH)
-    return resp.json()
+class RealTimeAPI:
+    def __init__(self):...
+    
+    def alerts(self) -> typing.List[datamodels.AlertRT]:
+        url = "https://gtfsapi.metrarail.com/gtfs/alerts"
+        r = requests.get(url, auth=AUTH)
+        data = r.json()
+        return data
+    
+    def positions(self) -> typing.List[datamodels.PositionRT]:
+        url = "https://gtfsapi.metrarail.com/gtfs/positions"
+        r = requests.get(url, auth=AUTH)
+        data = r.json()
+        return data
+    
+    def trip_updates(self) -> typing.List[datamodels.TripUpdateRT]:
+        url = "https://gtfsapi.metrarail.com/gtfs/tripUpdates"
+        r = requests.get(url, auth=AUTH)
+        data = r.json()
+        return data
+        
 
-def trips() -> Dict:
-    url = METRA_BASE + "/schedule/trips"
-    resp = requests.get(url,auth=AUTH)
-    return resp.json()
- 
-def shapes() -> Dict:
-    url = METRA_BASE + "/schedule/shapes"
-    resp = requests.get(url,auth=AUTH)
-    return resp.json()
+class _StaticDataObj:
+    def __init__(self):
+        assert(self.__call__)
+    
+    def pprint(self) -> None:
+        data = self.__call__()
+        rich.print_json(data=data)
 
-def routes() -> Dict:
-    url = METRA_BASE + "/schedule/routes"
-    resp = requests.get(url,auth=AUTH)
-    return resp.json()
+class _stops(_StaticDataObj):
+    def __init__(self):...
+    
+    def __call__(self, *args: Any, **kwds: Any) -> typing.List[datamodels.Stop]:
+        url = METRA_BASE + "/schedule/stops"
+        resp = requests.get(url,auth=AUTH)
+        data = resp.json()
+        # if include_route == True:
+        #     for stop in data:
+        #         stop_url = stop["stop_url"]
+        #         stop["routes"] = None
+        #         if isinstance(stop_url, str):
+        #             _match = utils.PTRN_RT_IN_URL.search(stop_url)
+        #             if _match != None:
+        #                 stop["routes"] = _match.group()
+        return data
 
-def calendar() -> Dict:
-    url = METRA_BASE + "/schedule/calendar"
-    resp = requests.get(url,auth=AUTH)
-    return resp.json()
 
-def calendar_dates() -> Dict:
-    url = METRA_BASE + "/schedule/calendar_dates"
-    resp = requests.get(url,auth=AUTH)
-    return resp.json()
+class _trips(_StaticDataObj):
+    def __init__(self):...
+    
+    def __call__(self, *args: Any, **kwds: Any) -> typing.List[datamodels.Trip]:
+        url = METRA_BASE + "/schedule/trips"
+        r = requests.get(url,auth=AUTH)
+        return r.json()
 
-def stop_times(trip_id: str = None) -> Dict:
-    "Not recommended - Takes a long time to retrieve this info"
-    url = METRA_BASE + "/schedule/stop_times"
-    if trip_id:
-        url += f"/{trip_id}"
-    resp = requests.get(url,auth=AUTH)
-    return resp.json()
+
+class _shapes(_StaticDataObj):
+    def __init__(self):...
+    
+    def __call__(self, *args: Any, **kwds: Any) -> typing.List[datamodels.Shape]:
+        url = METRA_BASE + "/schedule/shapes"
+        r = requests.get(url,auth=AUTH)
+        return r.json()
+
+
+class _routes(_StaticDataObj):
+    def __init__(self):...
+    
+    def __call__(self, *args: Any, **kwds: Any) -> typing.List[datamodels.Route]:
+        url = METRA_BASE + "/schedule/routes"
+        r = requests.get(url,auth=AUTH)
+        return r.json()
+
+
+class _calendar(_StaticDataObj):
+    def __init__(self):...
+    
+    def __call__(self, *args: Any, **kwds: Any) -> typing.List[datamodels.CalendarItem]:
+        url = METRA_BASE + "/schedule/calendar"
+        r = requests.get(url,auth=AUTH)
+        return r.json()
+
+
+class _calendar_dates(_StaticDataObj):
+    def __init__(self):...
+    
+    def __call__(self, *args: Any, **kwds: Any) -> typing.List[datamodels.CalendarException]:
+        url = METRA_BASE + "/schedule/calendar_dates"
+        r = requests.get(url,auth=AUTH)
+        return r.json()
+
+
+class _stop_times(_StaticDataObj):
+    def __init__(self):...
+    
+    def __call__(self, *args: Any, **kwds: Any) -> typing.List[datamodels.StopTimeRaw]:
+        _stop_times = []
+        with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
+            with z.open("stop_times.txt") as f:
+                reader = csv.reader(f.read().decode('utf-8').splitlines())
+                next(reader)
+                for row in reader:
+                    row = [x.strip() for x in row]
+                    _stop_times.append(
+                        datamodels.StopTimeRaw(
+                            trip_id=row[0],
+                            arrival_time=row[1],
+                            departure_time=row[2],
+                            stop_id=row[3],
+                            stop_sequence=int(row[4]),
+                            pickup_type=int(row[5]),
+                            drop_off_type=int(row[6]),
+                            center_boarding=int(row[7]),
+                            south_boarding=int(row[8]),
+                            bikes_allowed=int(row[9]),
+                            notice=int(row[10])
+                        )
+                    )
+        return _stop_times
+
+
+stops = _stops()
+trips = _trips()
+shapes = _shapes()
+routes = _routes()
+calendar = _calendar()
+calendar_dates = _calendar_dates()
+stop_times = _stop_times()
 
 def _parse_publish_time(text: str) -> dt.datetime:
     re_date = re.search("[AP]M",text)
     text = text[:re_date.end()]
     return dt.datetime.strptime(text, utils.PUBLISHED_FMT)
 
-def last_publish(return_dt:bool=False) -> Union[str,dt.datetime]:
+def last_publish(return_dt:bool=False) -> typing.Union[str,dt.datetime]:
     """
     Returns a timestamp of when Metra last published their schedule
     

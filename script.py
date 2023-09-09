@@ -1,44 +1,88 @@
+import timeit
+import typing
 import pprint
 import itertools
 import datetime as dt
 import io, os, re, csv
 import zipfile, tempfile
-from typing import Dict, List, Union, Optional, TypedDict
 
-# import pandas as pd
+import rich
+import pandas as pd
 from tabulate import tabulate
 
-from metra import static
-# from metra import trip_stop_times, active_services, active_trips
+import metra
+from metra import api, utils
 
-api = static.StaticAPI()
+# utils.update_schedule_zip()
 
-results = api.next_trains('NAPERVILLE','CUS',datetime=dt.datetime(2022,11,30,5,0),cmd=True)
-# route_trips = list(filter(lambda x: "BNSF" in x['trip_id'], api.trips()))
+static = api.StaticAPI()
+rt = api.RealTimeAPI()
 
-# all_stop_times = api.stop_times()
-# for route in api.routes():
-#     trips_by_stop_count = {}
-#     for t in route_trips:
-#         if t['trip_id'][-1] == 'C' and 'OB' in t['shape_id']:
-#             trip_stop_times = list(filter(lambda x: x["trip_id"] == t['trip_id'], all_stop_times))
-#             if len(trip_stop_times) in trips_by_stop_count.keys():
-#                 trips_by_stop_count[len(trip_stop_times)].append(t['trip_id'])
-#             else:
-#                 trips_by_stop_count[len(trip_stop_times)] = []
-#                 trips_by_stop_count[len(trip_stop_times)].append(t['trip_id'])
-#     pprint.pprint(trips_by_stop_count)
+stop_times = api.stop_times()
+stop_times_df = pd.DataFrame(stop_times)
+del stop_times
 
-# for st in api.trip_stops('BNSF_BN1239_V2_C'):
-#     st['zone_id'] = api.get_stop(st['stop_id'])['zone_id']
-#     print(f"{st['stop_id']:10} | {st['zone_id']:1} | {st['stop_sequence']:<2} | {st['arrival_time']}")
+routes = api.routes()
+route_ids = [x["route_id"] for x in routes]
 
-# pprint.pprint(results)
+route_stop_orders = {}
 
-# x = "BNSF_BN1262_V2_C"
-# y = "BNSF_UPW1284_V2_C"
-# z = "BNSF_U1268_V3_C"
+datetime = dt.datetime.today()
 
-# regex_string = r"([\D]+)_([\D]+)(\d{4})"
-# ptrn = re.compile(regex_string)
+# data = static.next_trains("NAPERVILLE", "CUS", datetime=dt.datetime(2023,9,11,5))
+# data = static.trip_stops("BNSF_BN1206_V2_C")
+# data = static.upcoming_trips("NAPERVILLE", "CUS", date=dt.date(2023, 9, 11))
 
+n = 5
+# result = timeit.timeit(stmt='static.next_trains("NAPERVILLE", "CUS", datetime=dt.datetime(2023,9,11,5))', globals=globals(), number=n)
+# result = timeit.timeit(stmt='static.trip_stops("BNSF_BN1206_V2_C", return_generator=True)', globals=globals(), number=n)
+result = timeit.timeit(stmt='static.upcoming_trips("NAPERVILLE", "CUS", date=dt.date(2023, 9, 11))', globals=globals(), number=n)
+rich.print(f"Avg execution time is {result/n} seconds")
+
+# rich.print(data)
+# print(pd.DataFrame(data))
+
+# for route_id in route_ids:
+#     route_trip_ids = {x["trip_id"] for x in api.trips() if x["route_id"] == route_id}
+    
+#     df = stop_times_df[stop_times_df["trip_id"].isin(route_trip_ids)]
+#     df = df.drop_duplicates(subset="stop_id")
+    
+#     route_stops: typing.List[typing.Dict] = []
+#     for row_idx, row in df.iterrows():
+#         stop_id = row["stop_id"]
+#         route_stops.append({"stop_id": stop_id, "zone_id": static.get_stop(stop_id)["zone_id"]})
+    
+#     route_stops.sort(key=lambda x: x["zone_id"])
+    
+#     route_zones = [x["zone_id"] for x in route_stops]
+    
+#     for route_stop in route_stops:
+#         route_stop["digit"] = 0
+#         route_stop["decimal"] = 0
+    
+#     route_stops_copy = route_stops.copy()
+    
+#     for idx, route_stop in enumerate(route_stops_copy):
+#         if idx - 1 == -1: continue
+        
+#         previous_route_stop = route_stops_copy[idx - 1].copy()
+#         current_route_stop = route_stops_copy[idx].copy()
+        
+#         if current_route_stop["zone_id"] == previous_route_stop["zone_id"]:
+#             route_stops[idx]["decimal"] = previous_route_stop["decimal"] + 1
+        
+#         if current_route_stop["zone_id"] != previous_route_stop["zone_id"]:
+#             route_stops[idx]["digit"] = previous_route_stop["digit"] + 1
+#         else:
+#             route_stops[idx]["digit"] = previous_route_stop["digit"]
+            
+#     route_stop_orders[route_id] = {}
+#     for route_stop in route_stops:
+#         stop_id = route_stop["stop_id"]
+#         stop_order = float(f"{route_stop['digit']}.{route_stop['decimal']}")
+        
+#         route_stop["order"] = stop_order
+        
+#         route_stop_orders[route_id][stop_id] = stop_order
+    
