@@ -1,6 +1,8 @@
 .vscode/
 __pycache__/
 
+.env/
+
 *.txt
 *.ipynb
 *.pickle
