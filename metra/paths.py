@@ -1,4 +1,4 @@
-import os
+import pathlib
 
-KEYS = os.path.join(os.path.dirname(__file__),'keys.txt')
-DATA = os.path.join(os.path.dirname(__file__),'data')
+KEYS = pathlib.Path(__file__).parent.joinpath("keys.txt").resolve()
+DATA = pathlib.Path(__file__).parent.joinpath("data").resolve()

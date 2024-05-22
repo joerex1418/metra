@@ -1,12 +1,12 @@
 from requests.auth import HTTPBasicAuth
 
-from .paths import KEYS
+from . import paths
 from .constants import METRA_API_KEY
 from .constants import METRA_SECRET_KEY
 
 if METRA_API_KEY == "" or METRA_SECRET_KEY == "":
     try:
-        with open(KEYS,'r') as txt:
+        with paths.KEYS.open("r") as txt:
             lines = txt.readlines()
             METRA_API_KEY = lines[0].strip()
             METRA_SECRET_KEY = lines[1].strip()
@@ -19,4 +19,4 @@ if METRA_API_KEY == "" or METRA_SECRET_KEY == "":
               Insert the API Key on the first line and the secret key on the second
               ''')
 
-AUTH = HTTPBasicAuth(METRA_API_KEY,METRA_SECRET_KEY)
+AUTH = HTTPBasicAuth(METRA_API_KEY, METRA_SECRET_KEY)

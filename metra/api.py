@@ -1,9 +1,9 @@
-from typing import Any
 import rich
 import typing
 import io, os, re
 import datetime as dt
 import csv, requests, zipfile
+from typing import Any
 
 from tabulate import tabulate
 
@@ -15,43 +15,50 @@ from .datamodels import _TimeData
 from .datamodels import Trip, Stop, Route, StopTime, CalendarItem
 from .utils import filters, determine_direction, normalize_direction
 
-LAST_PUBLISH  = os.path.join(paths.DATA, "last_publish.txt")
-LAST_DOWNLOAD = os.path.join(paths.DATA, "last_download.txt")
 
+LAST_PUBLISH = paths.DATA.joinpath("last_publish.txt")
+LAST_DOWNLOAD = paths.DATA.joinpath("last_download.txt")
 
 class StaticAPI:
     def __init__(self):
         # ---------------------------------------------------------- #
         # Check if the most recent static feed is available locally
         # ---------------------------------------------------------- #
-        _needs_update = True
+        needs_update = True
+        force_update = False
+
         cloud_publish = self._get_last_publish_cloud()
+
+        if paths.DATA.joinpath("last_published.txt").exists() == False:
+            force_update = True
+            with paths.DATA.joinpath("last_published.txt").open("w+") as fp:
+                fp.write(cloud_publish.string)
+        
         local_publish = self._get_last_publish_local()
         
         if local_publish.dt == cloud_publish.dt:
-            _needs_update = False
+            needs_update = False
         
-        if _needs_update:
+        if needs_update == True or force_update == True:
             # ------------------------------------------------------ #
             # Download schedule zip file.
             # ------------------------------------------------------ #
             url = METRA_BASE + "/raw/schedule.zip"
-            resp = requests.get(url,auth=AUTH)
-            with open(os.path.join(paths.DATA,"schedule.zip"),'wb') as f:
-                f.write(resp.content)
+            resp = requests.get(url, auth=AUTH)
+            with paths.DATA.joinpath("schedule.zip").open("wb+") as fp:
+                fp.write(resp.content)
 
             # ------------------------------------------------------ #
             # Log the publish time.
             # This timestamp reflects the time the static feed was 
             # last published to the server
             # ------------------------------------------------------ #
-            _log_path = os.path.join(paths.DATA,"last_published.txt")
-            with open(_log_path,'w') as f:
-                f.write(cloud_publish.string)
+            with paths.DATA.joinpath("last_published.txt").open("w+") as fp:
+                fp.write(cloud_publish.string)
     
     def stops(self,**kws) -> typing.List[Stop]:
         stops = []
-        with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
+        with zipfile.ZipFile(os.path.join(paths.DATA, "schedule.zip")) as z:
             with z.open("stops.txt") as f:
                 reader = csv.reader(f.read().decode('utf-8').splitlines())
                 next(reader)
@@ -102,7 +109,7 @@ class StaticAPI:
     
     def trips(self) -> typing.List[Trip]:
         _trips = []
-        with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
+        with zipfile.ZipFile(os.path.join(paths.DATA, "schedule.zip")) as z:
             with z.open("trips.txt") as f:
                 reader = csv.reader(f.read().decode('utf-8').splitlines())
                 next(reader)
@@ -123,7 +130,7 @@ class StaticAPI:
     
     def calendar(self) -> typing.List[CalendarItem]:
         services = []
-        with zipfile.ZipFile(os.path.join(paths.DATA,"schedule.zip")) as z:
+        with zipfile.ZipFile(os.path.join(paths.DATA, "schedule.zip")) as z:
             with z.open("calendar.txt") as f:
                 reader = csv.reader(f.read().decode('utf-8').splitlines())
                 next(reader)
@@ -194,7 +201,6 @@ class StaticAPI:
         # Of the trips that match the origin stop, filter to only
         # those that match the destination stop
         # ---------------------------------------------------------- #
-        
         _stop_times = (x for x in _stop_times if x["trip_id"] in trips)
         _stop_times = list(_stop_times)
         
@@ -218,7 +224,6 @@ class StaticAPI:
         # ---------------------------------------------------------- #
         # Sort by arrival time
         # ---------------------------------------------------------- #
-        # _stop_times.sort()
         _stop_times = sorted(_stop_times, key=lambda x: x['arrival_time'])
         
         if kws.get('cmd') == True:
@@ -329,15 +334,14 @@ class StaticAPI:
         return _active_stop_times
     
     def _get_last_publish_local(self) -> _TimeData:
-        _path = os.path.join(paths.DATA, "last_published.txt")
-        with open(_path,'r') as f:
-            dtstring = f.read()
-            _pdt = _TimeData(_parse_publish_time(dtstring),dtstring)
+        with paths.DATA.joinpath("last_published.txt").open("r") as fp:
+            dtstring = fp.read()
+            _pdt = _TimeData(_parse_publish_time(dtstring), dtstring)
             return _pdt
     
     def _get_last_publish_cloud(self) -> _TimeData:
         dtstring = last_publish(return_dt=False)
-        _pdt = _TimeData(_parse_publish_time(dtstring),dtstring)
+        _pdt = _TimeData(_parse_publish_time(dtstring), dtstring)
         return _pdt
 
     def _parse_date(self, date):
@@ -476,7 +480,7 @@ calendar_dates = _calendar_dates()
 stop_times = _stop_times()
 
 def _parse_publish_time(text: str) -> dt.datetime:
-    re_date = re.search("[AP]M",text)
+    re_date = re.search("[AP]M", text)
     text = text[:re_date.end()]
     return dt.datetime.strptime(text, utils.PUBLISHED_FMT)
 
@@ -489,7 +493,7 @@ def last_publish(return_dt:bool=False) -> typing.Union[str,dt.datetime]:
         If True, returns a datetime object instead of a string
     """
     url = METRA_BASE + "/raw/published.txt"
-    resp = requests.get(url,auth=AUTH)
+    resp = requests.get(url, auth=AUTH)
     datestring = resp.text
     
     if return_dt:

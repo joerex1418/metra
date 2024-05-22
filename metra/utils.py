@@ -5,7 +5,7 @@ import datetime as dt
 from requests.auth import HTTPBasicAuth
 from typing import Dict, List, Optional
 
-from .paths import DATA
+from . import paths
 from .auth import METRA_API_KEY
 from .auth import METRA_SECRET_KEY
 from .constants import ZONES
@@ -14,6 +14,7 @@ from .sequences import sequences
 
 AUTH = HTTPBasicAuth(METRA_API_KEY,METRA_SECRET_KEY)
 PUBLISHED_FMT = r'%m/%d/%y %I:%M:%S %p'
+PUBLISHED_TZ_FMT = r'MM/DD/YY hh:mm:ss A ZZZ'
 CALENDAR_FMT  = r'%Y%m%d'
 
 PTRN_RT_IN_URL = re.compile(r"(?<=train\-lines\/)(.*)(?=\/stations)")
@@ -58,25 +59,34 @@ def get_publish_time() -> dt.datetime:
     """
     Log and retrieve the time that Metra last published their schedule
     """
+
     url = METRA_BASE + "/raw/published.txt"
-    resp = requests.get(url,auth=AUTH)
-    time = resp.text
-    with open(f'{DATA}/last_published.txt','w+') as txtfile:
-        txtfile.write(time)
-    return dt.datetime.strptime(time,PUBLISHED_FMT)
+    resp = requests.get(url, auth=AUTH)
+    
+    if paths.DATA.exists() == False:
+        paths.DATA.mkdir()
+
+    with paths.DATA.joinpath("last_published.txt").open("w+") as txtfile:
+        txtfile.write(resp.text.strip())
+
+    import arrow
+
+    arrow_dt = arrow.get(resp.text.strip(), PUBLISHED_TZ_FMT)
+    return arrow_dt.datetime
+    # return dt.datetime.strptime(resp.text.strip(), PUBLISHED_TZ_FMT)
     
 def update_schedule_zip():
     """
     Refresh the zip file from the Metra GTFS Static Feed
     """
     url = METRA_BASE + "/raw/schedule.zip"
-    resp = requests.get(url,auth=AUTH)
-    updated_zip = zipfile.ZipFile(io.BytesIO(resp.content),'r')
-    new_zip = zipfile.ZipFile(f'{DATA}/schedule.zip','w')
+    resp = requests.get(url, auth=AUTH)
+    updated_zip = zipfile.ZipFile(io.BytesIO(resp.content), 'r')
+    new_zip = zipfile.ZipFile(paths.DATA.joinpath("schedule.zip"), 'w')
     
     for f in ['stop_times','stops','calendar','calendar_dates','routes','shapes','trips','fare_rules','fare_attributes']:
         fbytes = updated_zip.read(f'{f}.txt')
-        new_zip.writestr(f'{f}.txt',fbytes,zipfile.ZIP_DEFLATED)
+        new_zip.writestr(f'{f}.txt', fbytes, zipfile.ZIP_DEFLATED)
     updated_zip.close()
     new_zip.close()
     
